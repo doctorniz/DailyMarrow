@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Amberley Times</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script>
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('at-theme'); } catch (e) {}
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+@font-face{font-family:'Fraunces';src:url('/fonts/Fraunces.woff2') format('woff2');font-weight:100 900;font-style:normal;font-display:swap}
+@font-face{font-family:'Fraunces';src:url('/fonts/Fraunces-Italic.woff2') format('woff2');font-weight:100 900;font-style:italic;font-display:swap}
+
+/* ── tokens taken from biblio.ink/times ── */
+:root{
+  --bg:#efeeea;--bg-2:#f7f6f3;--ink:#1a1a18;--ink-2:#5f5c56;--rule:#d8d5cd;
+  --accent:#7d6320;--button:#1a1a18;--button-ink:#f7f6f3;
+  --ghost:rgba(26,26,24,.22);--shadow:rgba(26,26,24,.2);
+  --serif:'Fraunces',Georgia,'Times New Roman',serif;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --measure:34rem;--gutter:clamp(16px,5vw,48px);
+}
+:root[data-theme="dark"]{
+  --bg:#0a0908;--bg-2:#13110e;--ink:#f0ede4;--ink-2:#a8a295;--rule:#2b2723;
+  --accent:#c9a24a;--button:#daa520;--button-ink:#0a0908;
+  --ghost:rgba(240,237,228,.24);--shadow:rgba(0,0,0,.55);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme]){
+    --bg:#0a0908;--bg-2:#13110e;--ink:#f0ede4;--ink-2:#a8a295;--rule:#2b2723;
+    --accent:#c9a24a;--button:#daa520;--button-ink:#0a0908;
+    --ghost:rgba(240,237,228,.24);--shadow:rgba(0,0,0,.55);
+  }
+}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+
+*,*::before,*::after{box-sizing:border-box}
+/* The old build grew a phantom right-hand gutter below ~400px: bare 1fr tracks
+   (min-width:auto) and nowrap flex items pinned the page at 445px wide. Guards:
+   overflow-x:clip, minmax(0,1fr) on every track, min-width:0 on children,
+   overflow-wrap:anywhere so one long word cannot set the page width. */
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;overflow-x:clip}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 var(--sans);
+  -webkit-font-smoothing:antialiased;overflow-x:clip}
+img{display:block;max-width:100%;height:auto}
+a{color:inherit;text-underline-offset:.18em;text-decoration-thickness:1px}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:4px}
+::selection{background:rgba(218,165,32,.35)}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
+
+.wrap{width:100%;max-width:1180px;margin:0 auto;padding-inline:var(--gutter)}
+h1,h2,h3{font-family:var(--serif);font-weight:400;margin:0;letter-spacing:-.01em}
+p{margin:0}
+main{display:block}
+
+/* ── header bar ── */
+header.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding-top:max(20px,env(safe-area-inset-top));padding-bottom:18px}
+.brand{font-family:var(--serif);font-size:clamp(1.45rem,3.4vw,2.1rem);font-weight:600;line-height:1;
+  font-variation-settings:"opsz" 144,"SOFT" 0;letter-spacing:-.02em;text-decoration:none;min-width:0;
+  overflow-wrap:anywhere}
+.brand .sub{font-weight:400;font-style:italic}
+.bar-right{display:flex;align-items:center;gap:14px;flex:none}
+.bar-right a{font-size:.9rem;color:var(--ink-2);text-decoration:none}
+.bar-right a:hover{color:var(--ink)}
+
+.button{display:inline-flex;align-items:center;gap:10px;background:var(--button);color:var(--button-ink);
+  text-decoration:none;border:1px solid transparent;border-radius:12px;padding:10px 18px 10px 14px;
+  line-height:1.1;font:500 .95rem/1.1 var(--sans);cursor:pointer}
+.button:hover{opacity:.9}
+.button.small{padding:8px 15px;border-radius:999px;font-size:.86rem}
+.button:disabled{opacity:.45;cursor:wait}
+.theme-toggle{width:38px;height:38px;padding:0;border:0;border-radius:10px;background:transparent;
+  color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:color .25s}
+.theme-toggle:hover{color:var(--ink)}
+.theme-toggle svg{width:18px;height:18px;pointer-events:none}
+.theme-toggle .sun{display:none}
+:root[data-theme="dark"] .theme-toggle .sun{display:block}
+:root[data-theme="dark"] .theme-toggle .moon{display:none}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme]) .theme-toggle .sun{display:block}
+  :root:not([data-theme]) .theme-toggle .moon{display:none}
+}
+
+/* ── dateline strip ── */
+.dateline{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;
+  border-top:2px solid var(--ink);border-bottom:1px solid var(--rule);padding:.55rem 0 .6rem;
+  font:italic .95rem/1.4 var(--serif);color:var(--ink-2)}
+.dateline .mid{font-style:normal;font-family:var(--serif);font-weight:600;letter-spacing:.02em;
+  text-transform:uppercase;font-size:.9rem;color:var(--ink)}
+
+nav.cat-nav{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:1.4rem;
+  overflow-x:auto;scrollbar-width:none;
+  /* full-bleed + opaque: stories scroll under the bar instead of beside it */
+  margin-inline:calc(-1 * var(--gutter));padding:.6rem var(--gutter) .65rem;
+  background:var(--bg);border-bottom:1px solid var(--rule);transition:box-shadow .25s}
+nav.cat-nav.scrolled{box-shadow:0 6px 14px -10px var(--shadow)}
+nav.cat-nav::-webkit-scrollbar{display:none}
+nav.cat-nav a{flex:none;font:500 .74rem/1.4 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-2);white-space:nowrap;text-decoration:none;transition:color .25s}
+nav.cat-nav a:hover{color:var(--ink)}
+nav.cat-nav a.active{color:var(--ink);text-decoration:underline;text-decoration-color:var(--accent);
+  text-decoration-thickness:2px;text-underline-offset:.45em}
+
+/* ── labels ── */
+.eyebrow{display:block;font:500 .78rem/1.4 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.7rem}
+.eyebrow.tight{font-size:.7rem;margin-bottom:.25rem}
+.meta{font:italic .95rem/1.4 var(--serif);color:var(--ink-2);margin-top:.5rem;overflow-wrap:anywhere}
+.meta .dot{padding:0 .35rem}
+.standfirst{font:italic 1.05rem/1.5 var(--serif);color:var(--ink-2);max-width:var(--measure);
+  margin-top:.9rem;overflow-wrap:anywhere;hyphens:auto}
+.blurb{color:var(--ink-2);overflow-wrap:anywhere;hyphens:auto}
+.t{overflow-wrap:anywhere;hyphens:auto}
+
+/* ── halftone picture ── */
+.pic{margin:0;min-width:0;filter:drop-shadow(0 18px 34px var(--shadow))}
+.pic .frame{position:relative;display:block;overflow:hidden;background:var(--bg-2);border:1px solid var(--rule)}
+.pic img{width:100%;aspect-ratio:3/2;object-fit:cover;filter:grayscale(.5) contrast(1.06) brightness(1.02)}
+.pic .screen{position:absolute;inset:0;pointer-events:none;opacity:.17;mix-blend-mode:multiply;
+  background-image:radial-gradient(var(--ink) .85px,transparent 1.1px);background-size:3px 3px}
+:root[data-theme="dark"] .pic .screen{mix-blend-mode:screen;opacity:.09;
+  background-image:radial-gradient(#fff .85px,transparent 1.1px)}
+.pic .noimg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font:400 1.05rem/1 var(--serif);letter-spacing:.14em;color:var(--ink-2);background:var(--bg-2)}
+.pic figcaption{margin-top:.6rem;font:italic .9rem/1.4 var(--serif);color:var(--ink-2)}
+.pic.sq img,.pic.mini img{aspect-ratio:1}
+.pic.mini{filter:none}
+.row .pic{filter:none}
+.play .badge{position:absolute;bottom:.4rem;right:.4rem;z-index:2;font:500 .6rem/1 var(--sans);
+  letter-spacing:.1em;text-transform:uppercase;background:rgba(10,9,8,.72);color:#f0ede4;padding:.25rem .45rem;border-radius:6px}
+
+/* ── front page lead ── */
+.lead{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
+  gap:clamp(24px,4vw,56px);align-items:start;padding:clamp(22px,3vw,40px) 0 clamp(28px,4vw,44px);
+  border-bottom:1px solid var(--rule)}
+.lead .t{display:block;font-family:var(--serif);font-weight:500;letter-spacing:-.02em;
+  font-size:clamp(1.9rem,4.6vw,3.1rem);line-height:1.02;font-variation-settings:"opsz" 100;
+  margin:.1rem 0 0;text-decoration:none;transition:color .25s}
+.lead a.t:hover{color:var(--accent)}
+@media (max-width:760px){.lead{grid-template-columns:minmax(0,1fr);gap:22px}}
+
+/* ── section head (wraps instead of overflowing) ── */
+section{padding-top:clamp(34px,5vw,64px);scroll-margin-top:3.5rem}
+.sec-head{display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;
+  border-top:2px solid var(--ink);padding-top:.85rem;margin-bottom:1.5rem}
+.sec-head h2{font-family:var(--serif);font-size:clamp(1.45rem,3vw,2.05rem);font-weight:600;line-height:1;
+  font-variation-settings:"opsz" 72;min-width:0;overflow-wrap:anywhere}
+.sec-head .count{margin-left:auto;font:500 .74rem/1.4 var(--sans);letter-spacing:.12em;
+  text-transform:uppercase;color:var(--accent)}
+
+/* ── picture cards ── */
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(24px,3.5vw,44px)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(24px,3.5vw,44px)}
+.card{display:block;min-width:0;text-decoration:none;color:inherit;overflow:hidden;max-height:480px}
+.card .t{display:block;font-family:var(--serif);font-weight:500;font-size:1.3rem;line-height:1.2;
+  letter-spacing:-.01em;margin:.45rem 0 .5rem;transition:color .25s;
+  display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card:hover .t{color:var(--accent)}
+.card .blurb{font-size:.95rem;display:-webkit-box;-webkit-line-clamp:4;line-clamp:4;
+  -webkit-box-orient:vertical;overflow:hidden}
+@media (max-width:700px){.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:480px){.grid3,.grid2{grid-template-columns:minmax(0,1fr)}}
+
+/* ── newsprint columns (inside pages) ── */
+.newsprint{columns:3;column-gap:clamp(20px,3vw,36px);column-rule:1px solid var(--rule);
+  margin-top:clamp(24px,3vw,40px)}
+.np{break-inside:avoid;-webkit-column-break-inside:avoid;display:block;min-width:0;
+  padding:0 0 1.1rem;border-bottom:1px solid var(--rule);margin-bottom:1.1rem;text-decoration:none;color:inherit}
+.np:last-child{border-bottom:0;margin-bottom:0}
+.np .t{display:block;font-family:var(--serif);font-weight:500;font-size:1.06rem;line-height:1.25;
+  letter-spacing:-.005em;transition:color .25s}
+.np:hover .t{color:var(--accent)}
+.np .src{display:block;font:500 .68rem/1.4 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-2);margin-bottom:.3rem}
+.np .blurb{font-size:.9rem;margin-top:.4rem}
+@media (max-width:1100px){.newsprint{columns:2}}
+@media (max-width:640px){.newsprint{columns:1}}
+/* Phone: clip the long scraped blurbs so a desk stops running thousands of px tall */
+@media (max-width:640px){
+  .np .blurb,.row .blurb{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+    line-clamp:2;overflow:hidden}
+  .card .blurb{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;
+    line-clamp:2;overflow:hidden}
+  .lead .standfirst{-webkit-line-clamp:4;line-clamp:4;display:-webkit-box;
+    -webkit-box-orient:vertical;overflow:hidden}
+  /* photo cards go horizontal on a phone: three full-width plates per desk was the bulk of the scroll */
+  .card{display:grid;grid-template-columns:6.5rem minmax(0,1fr);gap:.15rem .9rem;align-items:start}
+  .card .pic{grid-column:1;grid-row:1 / span 3;margin:0}
+  .card .pic img{aspect-ratio:1;filter:grayscale(.5) contrast(1.06) brightness(1.02)}
+  /* finer screen: the 3px dot grid turns to noise on a 104px thumbnail */
+  .card .pic .screen{background-size:2px 2px;
+    background-image:radial-gradient(var(--ink) .6px,transparent .8px);opacity:.15}
+  .card .pic figcaption{display:none}
+  .card .eyebrow{grid-column:2;margin-bottom:0}
+  .card .t{grid-column:2;font-size:1.08rem;margin:.1rem 0 .3rem}
+  .card .blurb{grid-column:2}
+  /* tighter newsprint rhythm */
+  .np{padding-bottom:12px;margin-bottom:12px}
+  .row{padding:18px 0}
+}
+
+/* ── hairline rows ── */
+.rows{border-top:2px solid var(--ink)}
+.row{display:grid;grid-template-columns:minmax(0,1fr);gap:.9rem;padding:22px 0;
+  border-bottom:1px solid var(--rule);text-decoration:none;color:inherit;min-width:0}
+.row.with-thumb{grid-template-columns:5.5rem minmax(0,1fr)}
+.row.vthumb{grid-template-columns:9rem minmax(0,1fr)}
+.row .t{display:block;font-family:var(--serif);font-weight:500;font-size:1.35rem;line-height:1.2;
+  letter-spacing:-.01em;margin:.3rem 0 .2rem;transition:color .25s}
+.row:hover .t{color:var(--accent)}
+.row .blurb{font-size:.95rem}
+@media (max-width:560px){
+  .row.with-thumb{grid-template-columns:4rem minmax(0,1fr)}
+  .row.vthumb{grid-template-columns:6rem minmax(0,1fr)}
+  .row .t{font-size:1.15rem}
+}
+
+.loading{text-align:center;padding:5rem 0;color:var(--ink-2);font:italic 1rem/1.5 var(--serif)}
+
+footer{border-top:1px solid var(--rule);margin-top:clamp(48px,7vw,88px);
+  padding:40px 0 max(40px,env(safe-area-inset-bottom))}
+footer .fin{display:flex;flex-wrap:wrap;gap:14px 28px;justify-content:space-between;align-items:baseline;
+  font-size:.88rem;color:var(--ink-2)}
+footer nav{display:flex;flex-wrap:wrap;gap:8px 22px}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink);text-decoration:underline}
+
+/* ── reader modal: the story re-set in house style ── */
+html.reader-on{overflow:hidden}
+.reader-shell{position:fixed;inset:0;z-index:95;display:none}
+.reader-shell.open{display:block}
+.rb{position:absolute;inset:0;background:rgba(20,18,14,.6)}
+.rd{position:absolute;left:50%;top:3.5vh;transform:translateX(-50%);
+  width:min(46rem,calc(100vw - 20px));max-height:93vh;display:flex;flex-direction:column;
+  background:var(--bg-2);color:var(--ink);border-top:3px solid var(--ink);
+  box-shadow:0 24px 64px var(--shadow)}
+@keyframes rdin{from{opacity:0;transform:translateX(-50%) translateY(10px)}
+  to{opacity:1;transform:translateX(-50%)}}
+.reader-shell.open .rd{animation:rdin .18s ease-out}
+.rd-head{position:relative;padding:18px 30px 13px;border-bottom:1px solid var(--rule);flex:0 0 auto}
+.rd-eyebrow{font:500 .7rem/1.4 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.rd-x{position:absolute;top:12px;right:14px;width:34px;height:34px;border:1px solid var(--rule);
+  border-radius:50%;background:transparent;color:var(--ink-2);font:400 1.15rem/1 var(--sans);cursor:pointer}
+.rd-x:hover{color:var(--ink);border-color:var(--ink)}
+.rd-title{margin:4px 34px 0 0;font-family:var(--serif);font-weight:500;line-height:1.14;
+  font-size:clamp(1.4rem,3.4vw,2rem);letter-spacing:-.015em;overflow-wrap:anywhere}
+.rd-by{margin-top:7px;font:italic .86rem/1.4 var(--serif);color:var(--ink-2)}
+.rd-by a{color:var(--accent)}
+.rd-body{flex:1 1 auto;overflow:auto;padding:22px 30px 52px;overscroll-behavior:contain;
+  font:1.02rem/1.72 var(--serif)}
+.rd-body p{margin:0 0 1.15em;overflow-wrap:anywhere;hyphens:auto}
+.rd-body h3{font-size:1.22rem;font-weight:600;margin:1.7em 0 .55em;line-height:1.25}
+.rd-body blockquote{margin:1.5em 0;padding-left:1.05em;border-left:2px solid var(--accent);
+  font-style:italic;color:var(--ink-2)}
+.rd-body figure.rfig{margin:1.7em 0}
+.rd-body figure.rfig img{width:100%;background:var(--ghost)}
+.rd-body figure.rfig figcaption{font:500 .76rem/1.45 var(--sans);letter-spacing:.02em;
+  color:var(--ink-2);margin-top:.45em;border-top:1px solid var(--rule);padding-top:.45em}
+.rd-note{font:italic .92rem/1.55 var(--serif);color:var(--ink-2);border-top:1px solid var(--rule);
+  padding-top:1em;margin:1.4em 0}
+.rd-stand{font-style:italic}
+@media (max-width:640px){
+  .rd{top:0;left:0;transform:none;width:100vw;max-height:100vh;height:100dvh;border-top:0}
+  .reader-shell.open .rd{animation:none}
+  .rd-head{padding:14px 18px 11px}.rd-body{padding:18px 18px 48px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <a class="brand" href="/">Amberley <span class="sub">Times</span></a>
+    <div class="bar-right">
+      <button class="theme-toggle" id="themeBtn" type="button" aria-label="Switch between the day and night editions">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>
+        </svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6"/>
+        </svg>
+      </button>
+      <button class="button small" id="refreshBtn" type="button">Refresh</button>
+    </div>
+  </header>
+
+  <div class="dateline">
+    <span id="dvol">Vol. I</span>
+    <span class="mid" id="mdate">&mdash;</span>
+    <span id="mupdated">&mdash;</span>
+  </div>
+
+  <nav class="cat-nav" id="chips"></nav>
+
+  <main id="content"><div class="loading">Fetching today&rsquo;s edition&hellip;</div></main>
+
+  <footer><div class="fin">
+    <span>The Amberley Times &middot; Brisbane</span>
+    <nav><a href="/">Front page</a> <a href="#sport">Sport</a></nav>
+    <span>Set from public RSS &amp; Atom wires &middot; nothing generated</span>
+  </div></footer>
+</div>
+
+<div class="reader-shell" id="reader" hidden>
+  <div class="rb" id="rbDro"></div>
+  <aside class="rd" role="dialog" aria-modal="true" aria-labelledby="rdTitle">
+    <div class="rd-head">
+      <button class="rd-x" id="rdX" type="button" aria-label="Close the story">&times;</button>
+      <div class="rd-eyebrow" id="rdSrc"></div>
+      <h2 class="rd-title" id="rdTitle"></h2>
+      <div class="rd-by" id="rdBy"></div>
+    </div>
+    <div class="rd-body" id="rdBody"></div>
+  </aside>
+</div>
+
+<script>
+(function(){
+  var content = document.getElementById('content');
+  var LINKS = {};
+
+
+  /* theme: data-theme + localStorage, falling back to the system setting */
+  var root = document.documentElement;
+  function effective(){
+    var a = root.getAttribute('data-theme');
+    if (a === 'light' || a === 'dark') return a;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.getElementById('themeBtn').addEventListener('click', function(){
+    var next = effective() === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('at-theme', next); } catch (e) {}
+  });
+
+  function esc(s){ var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+  function rel(ts){
+    if(!ts) return '';
+    var s = Math.max(0,(Date.now()/1000) - ts);
+    if(s < 3600) return Math.max(1,Math.round(s/60)) + ' min';
+    if(s < 86400) return Math.round(s/3600) + ' hr';
+    var d = Math.round(s/86400);
+    return d + (d > 1 ? ' days' : ' day');
+  }
+  function meta(it){
+    var t = rel(it.ts);
+    return '<div class="meta">' + esc(it.source) + (t ? '<span class="dot">&middot;</span>' + t + ' ago' : '') + '</div>';
+  }
+  function ytThumb(it){
+    var m = (it.link || '').match(/[?&]v=([\w-]{11})/);
+    return m ? 'https://i.ytimg.com/vi/' + m[1] + '/hqdefault.jpg' : (it.image || '');
+  }
+  function pic(u, cls, cap, eager){
+    var inner = (u && u.indexOf('http') === 0)
+      ? '<img' + (eager ? '' : ' loading="lazy"') + ' src="' + esc(u).replace(/"/g,'%22') + '" alt="">'
+      : '';
+    return '<figure class="pic ' + (cls||'') + '"><span class="frame">' + inner +
+           '<span class="screen"></span></span>' +
+           (cap ? '<figcaption>' + esc(cap) + '</figcaption>' : '') + '</figure>';
+  }
+
+  function lead(sec, it){
+    return '<section class="lead"><div>'
+      + '<span class="eyebrow">' + esc(sec.title) + ' &middot; lead story</span>'
+      + '<a class="t" href="' + esc(it.link) + '" target="_blank" rel="noopener">' + esc(it.title) + '</a>'
+      + (it.summary ? '<p class="standfirst">' + esc(it.summary) + '</p>' : '')
+      + meta(it)
+      + '</div><div>' + pic(it.image, '', 'Screened as a halftone \u00b7 ' + it.source, true) + '</div></section>';
+  }
+
+  function cards(items){
+    var h = '<div class="' + (items.length === 2 ? 'grid2' : 'grid3') + '">';
+    items.forEach(function(it){
+      h += '<a class="card" href="' + esc(it.link) + '" target="_blank" rel="noopener">'
+        + pic(it.image, '', '', false)
+        + '<span class="eyebrow tight">' + esc(it.source) + '</span>'
+        + '<span class="t">' + esc(it.title) + '</span>'
+        + (it.summary ? '<span class="blurb">' + esc(it.summary) + '</span>' : '')
+        + '</a>';
+    });
+    return h + '</div>';
+  }
+
+  function columns(items){
+    var h = '<div class="newsprint">';
+    items.forEach(function(it){
+      h += '<a class="np" href="' + esc(it.link) + '" target="_blank" rel="noopener">'
+        + '<span class="src">' + esc(it.source) + '</span>'
+        + '<span class="t">' + esc(it.title) + '</span>'
+        + (it.summary ? '<span class="blurb">' + esc(it.summary) + '</span>' : '')
+        + '</a>';
+    });
+    return h + '</div>';
+  }
+
+  function rows(items, cls){
+    var h = '<div class="rows">';
+    items.forEach(function(it){
+      var u = cls === 'vthumb' ? ytThumb(it) : it.image;
+      h += '<a class="row' + (cls ? ' ' + cls : '') + '" href="' + esc(it.link) + '" target="_blank" rel="noopener">'
+        + (cls ? pic(u, cls === 'vthumb' ? 'sq play' : 'mini', '', false) : '')
+        + '<div><span class="eyebrow tight">' + esc(it.source) + '</span>'
+        + '<span class="t">' + esc(it.title) + '</span>'
+        + (it.summary ? '<span class="blurb">' + esc(it.summary) + '</span>' : '')
+        + meta(it) + '</div></a>';
+    });
+    return h + '</div>';
+  }
+
+  /* keeps the pinned nav's chip in step with the desk you are reading */
+  function trackActive(){
+    var links = {}, nav = document.getElementById('chips');
+    [].forEach.call(nav.querySelectorAll('a'), function(a){ links[a.getAttribute('href').slice(1)] = a; });
+    var secs = [].slice.call(document.querySelectorAll('main section[id]'));
+    if (!secs.length) return;
+    var raf = 0;
+    function upd(){
+      raf = 0;
+      var y = window.scrollY + 96, cur = secs[0].id;
+      for (var i = 0; i < secs.length; i++){
+        if (secs[i].offsetTop <= y) cur = secs[i].id; else break;
+      }
+      if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 6) cur = secs[secs.length-1].id;
+      for (var k in links) links[k].classList.toggle('active', k === cur);
+      nav.classList.toggle('scrolled', window.scrollY > 10);
+      if (links[cur]) links[cur].scrollIntoView({block:'nearest', inline:'nearest'});
+    }
+    window.addEventListener('scroll', function(){ if (!raf) raf = requestAnimationFrame(upd); }, {passive:true});
+    upd();
+  }
+
+  function render(ed){
+    document.getElementById('mdate').textContent = (ed.masthead_date || '').toUpperCase();
+    document.getElementById('mupdated').textContent = 'Printed at ' + (ed.generated_human || '');
+    try {
+      var no = Math.floor((new Date(ed.generated || Date.now()) - new Date(2026, 10, 8)) / 86400000) + 1;
+      document.getElementById('dvol').textContent = 'Vol. I \u00b7 No. ' + (no > 0 ? no : 1);
+    } catch (e) {}
+
+    var secs = (ed.sections || []).filter(function(s){ return s.items && s.items.length && s.kind !== "curated"; });
+    if(!secs.length){ content.innerHTML = '<div class="loading">No edition yet &mdash; press <em>Refresh</em> to print one.</div>'; return; }
+    secs.forEach(function(sec){ (sec.items || []).forEach(function(it){
+      if(it.link && it.link.indexOf('https://') === 0) LINKS[it.link] = it; }); });
+
+    var chips = '', body = '';
+    var leadSec = secs[0], leadIt = null;
+    for(var i = 0; i < leadSec.items.length; i++){ if(leadSec.items[i].image){ leadIt = leadSec.items[i]; break; } }
+    leadIt = leadIt || leadSec.items[0];
+    body += lead(leadSec, leadIt);
+    var rest = leadSec.items.filter(function(x){ return x.link !== leadIt.link; });
+
+    secs.forEach(function(sec, idx){
+      var items = (idx === 0) ? rest : sec.items;
+      if(!items.length) return;
+      chips += '<a href="#' + esc(sec.id) + '">' + esc(sec.title) + '</a>';
+      var inner;
+      if(sec.kind === 'video') inner = rows(items, 'vthumb');
+      else if(sec.kind === 'reddit') inner = columns(items);
+      else {
+        var pics = items.filter(function(x){ return x.image; });
+        var words = items.filter(function(x){ return !x.image; });
+        var headN = idx === 0 ? 2 : 3;
+        var head = pics.slice(0, headN);
+        var colItems = pics.slice(headN).concat(words);
+        inner = (head.length ? cards(head) : '') + (colItems.length ? columns(colItems) : '');
+      }
+      body += '<section id="' + esc(sec.id) + '">'
+        + '<div class="sec-head"><h2>' + esc(sec.title) + '</h2>'
+        + '<span class="count">' + items.length + ' items</span></div>'
+        + inner + '</section>';
+    });
+
+    document.getElementById('chips').innerHTML = chips;
+    content.innerHTML = body;
+
+    trackActive();
+
+    content.querySelectorAll('.pic img').forEach(function(img){
+      img.addEventListener('error', function(){
+        var frame = img.parentNode;
+        img.remove();
+        var d = document.createElement('span');
+        d.className = 'noimg';
+        d.textContent = 'AT';
+        frame.insertBefore(d, frame.firstChild);
+      });
+    });
+  }
+
+  /* ── reader modal: the story re-set in house style, fetched through
+        the server's extractor endpoint (strips paywall chrome, ads, nav) ── */
+  var EXTERNAL_PASS = /(reddit\.com|github\.com|youtu\.be|youtube\.com|news\.ycombinator|hackernews)/i;
+  var reader = document.getElementById('reader'),
+      rdSrc = document.getElementById('rdSrc'), rdTitle = document.getElementById('rdTitle'),
+      rdBy = document.getElementById('rdBy'), rdBody = document.getElementById('rdBody');
+  var rdCache = {}, rdToken = 0, rdLast = null;
+
+  function rdShow(){
+    reader.hidden = false; reader.classList.add('open');
+    document.documentElement.classList.add('reader-on');
+  }
+  function rdHide(){
+    rdToken++;
+    reader.classList.remove('open'); reader.hidden = true;
+    document.documentElement.classList.remove('reader-on');
+    if(rdLast){ try { rdLast.focus(); } catch (e) {} rdLast = null; }
+  }
+  function rdFallback(u, why){
+    var it = LINKS[u] || {};
+    rdTitle.innerHTML = esc(it.title || 'This story');
+    rdBy.innerHTML = '';
+    var h = '';
+    if(it.summary) h += '<p class="rd-stand">' + esc(it.summary) + '</p>';
+    h += '<p class="rd-note">' + why + ' <a href="' + esc(u) +
+         '" target="_blank" rel="noopener">Read it at ' + esc(it.source || 'the source') + ' ↗</a></p>';
+    rdBody.innerHTML = h;
+  }
+  function rdPaint(res, u, tok){
+    if(tok !== rdToken) return;
+    if(!res || !res.ok){
+      var why = (res && res.reason === 'short-or-gated')
+        ? 'This outlet keeps the full text behind its own gate — the wire copy below is what we can print honestly.'
+        : 'The reader could not fetch this story.';
+      rdFallback(u, why); return;
+    }
+    rdTitle.innerHTML = res.title || esc((LINKS[u] || {}).title || '');
+    rdBy.innerHTML = res.byline ? ('By ' + res.byline) : '';
+    var sourceLink = (LINKS[u] || {}).source ? '<p class="rd-note" style="margin-top:2em"><a href="' + esc(u) + '" target="_blank" rel="noopener">Read the original at ' + esc((LINKS[u] || {}).source) + ' ↗</a></p>' : '';
+    rdBody.innerHTML = (res.html || '<p class="rd-note">The extracted edition came back empty.</p>') + sourceLink;
+    rdBody.scrollTop = 0;
+  }
+  function rdOpen(u, anchor){
+    rdLast = anchor; rdShow();
+    var it = LINKS[u] || {};
+    rdSrc.textContent = it.source || '';
+    rdTitle.innerHTML = esc(it.title || '');
+    rdBy.innerHTML = '';
+    rdBody.innerHTML = '<div class="loading">Fetching the story…</div>';
+    var tok = ++rdToken;
+    if(rdCache[u]){ rdPaint(rdCache[u], u, tok); return; }
+    fetch('/read?url=' + encodeURIComponent(u))
+      .then(function(r){ return r.json().catch(function(){ return {ok:false, reason:'bad-response'}; }); })
+      .then(function(res){
+        if(res.ok) rdCache[u] = res;
+        rdPaint(res, u, tok);
+      })
+      .catch(function(){ if(tok === rdToken) rdFallback(u, 'The wire went quiet — the reader could not reach this story.'); });
+  }
+
+  content.addEventListener('click', function(e){
+    if(e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if(!a || !content.contains(a)) return;
+    var u = a.getAttribute('href') || '';
+    if(u.indexOf('http') !== 0 || EXTERNAL_PASS.test(u) || !LINKS[u]) return;
+    e.preventDefault();
+    rdOpen(u, a);
+  });
+  document.getElementById('rdX').addEventListener('click', rdHide);
+  document.getElementById('rbDro').addEventListener('click', rdHide);
+  document.addEventListener('keydown', function(e){
+    if((e.key === 'Escape' || e.key === 'Esc') && !reader.hidden) rdHide();
+  });
+
+  fetch('/edition.json', {credentials:'include'})
+    .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+    .then(render)
+    .catch(function(){ content.innerHTML = '<div class="loading">Could not load the edition &mdash; press <em>Refresh</em>.</div>'; });
+
+  var btn = document.getElementById('refreshBtn');
+  btn.addEventListener('click', function(){
+    btn.disabled = true; btn.textContent = 'Printing\u2026';
+    fetch('/refresh', {method:'POST', credentials:'include'}).then(poll)
+      .catch(function(){ btn.disabled = false; btn.textContent = 'Refresh'; });
+    function poll(){
+      setTimeout(function(){
+        fetch('/refresh-status', {credentials:'include'}).then(function(r){ return r.json(); })
+          .then(function(st){ st.running ? poll() : location.reload(); })
+          .catch(function(){ location.reload(); });
+      }, 4000);
+    }
+  });
+})();
+</script>
+</body>
+</html>

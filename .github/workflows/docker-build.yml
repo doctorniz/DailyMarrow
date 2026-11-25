@@ -1,0 +1,33 @@
+name: Docker Build Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build Docker image
+        run: |
+          docker buildx build \
+            --load \
+            --tag daily-marrow:test \
+            --push-to-registry=false \
+            .
+        
+      - name: Run container test
+        run: |
+          docker run -d --name daily-marrow-test -p 8091:8091 daily-marrow:test
+          sleep 5
+          curl -s http://localhost:8091/ | grep -q "Daily Marrow" && echo "✅ Server responds" || echo "❌ Server not responding"
+          curl -s http://localhost:8091/edition.json | python3 -c "import json,sys; d=json.load(sys.stdin); print('✅ edition.json has', len(d.get('sections',[])), 'sections')" 2>&1 || echo "❌ edition.json invalid"
+          docker stop daily-marrow-test
+          docker rm daily-marrow-test

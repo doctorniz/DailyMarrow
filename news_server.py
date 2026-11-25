@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Amberley Times -- news site server (port 8091).
+"""Daily Marrow -- news site server (port 8091).
 
 Public (no auth): serves the magazine front-end + edition.json. POST /refresh
 re-runs the fetcher in the background, throttled to one run per
@@ -29,8 +29,17 @@ import urllib.request
 from pathlib import Path
 
 HOME = Path.home()
+APP_DIR = Path(__file__).resolve().parent
+# NEWS_DIR holds the generated edition.json (writable, may be a Docker volume)
 NEWS_DIR = Path(os.environ.get("NEWS_DIR", HOME / ".hermes" / "news")).resolve()
-FETCHER = HOME / ".hermes" / "news_fetch.py"
+# STATIC_DIR holds index.html, fonts/ and favicons. Defaults to the folder this
+# script lives in when it has index.html (repo checkout / Docker image),
+# otherwise falls back to NEWS_DIR (older layout with everything in one dir).
+STATIC_DIR = Path(os.environ.get(
+    "NEWS_STATIC_DIR",
+    APP_DIR if (APP_DIR / "index.html").is_file() else NEWS_DIR)).resolve()
+# the fetcher that ships next to this script
+FETCHER = Path(os.environ.get("NEWS_FETCHER", APP_DIR / "news_fetch.py")).resolve()
 PORT = int(os.environ.get("NEWS_PORT", "8091"))
 HOST = os.environ.get("NEWS_HOST", "0.0.0.0")
 REFRESH_COOLDOWN = int(os.environ.get("NEWS_REFRESH_COOLDOWN", "900"))
@@ -519,8 +528,46 @@ def _rate_ok(ip):
         return True
 
 
+def _start_refresh():
+    """Run the fetcher in the background. Returns (started, retry_in_seconds)."""
+    with _refresh_lock:
+        if _refresh_state["running"]:
+            return False, 0
+        elapsed = time.time() - _refresh_state["last_started"]
+        if elapsed < REFRESH_COOLDOWN:
+            return False, int(REFRESH_COOLDOWN - elapsed)
+        _refresh_state["running"] = True
+        _refresh_state["last_started"] = time.time()
+
+    def run():
+        try:
+            rc = subprocess.run([sys.executable, str(FETCHER)], timeout=600).returncode
+            _refresh_state["last_rc"] = rc
+        except Exception:
+            _refresh_state["last_rc"] = -1
+        finally:
+            _refresh_state["running"] = False
+
+    threading.Thread(target=run, daemon=True).start()
+    return True, 0
+
+
+def _auto_fetch_if_stale():
+    """Fetch on startup if edition.json is missing or older than FETCH_TTL_SECONDS."""
+    ttl = int(os.environ.get("FETCH_TTL_SECONDS", "3600"))  # 1 hour default
+    edition_path = NEWS_DIR / "edition.json"
+    if not edition_path.exists():
+        print("No edition.json found, fetching now...", flush=True)
+        _start_refresh()
+        return
+    age = time.time() - edition_path.stat().st_mtime
+    if age > ttl:
+        print("edition.json is %ds old (> %ds), fetching..." % (age, ttl), flush=True)
+        _start_refresh()
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
-    server_version = "AmberleyTimes/1.0"
+    server_version = "DailyMarrow/1.0"
     protocol_version = "HTTP/1.1"
 
     def _send(self, data, ctype="text/html; charset=utf-8", status=200, cache=False):
@@ -533,12 +580,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _file(self, rel, cache=False):
+    def _file(self, rel, cache=False, base=None):
+        base = base or STATIC_DIR
         if ".." in rel.split("/"):
             self._send("Not found.\n", "text/plain", 404)
             return
-        target = (NEWS_DIR / rel).resolve()
-        if NEWS_DIR not in target.parents and target != NEWS_DIR:
+        target = (base / rel).resolve()
+        if base not in target.parents and target != base:
             self._send("Not found.\n", "text/plain", 404)
             return
         if not target.is_file():
@@ -565,12 +613,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._file("index.html")
             return
         if path == "/edition.json":
-            self._file("edition.json")
+            self._file("edition.json", base=NEWS_DIR)
             return
         if path == "/refresh-status":
             self._send(json.dumps(_refresh_state), "application/json")
             return
-        self._file(path.lstrip("/"))
+        # nothing else is public: STATIC_DIR may be the app folder, which also
+        # holds the server source (and .git in a checkout)
+        self._send("Not found.\n", "text/plain", 404)
 
     def _client_ip(self):
         # behind a local nginx proxy the real visitor is in X-Forwarded-For;
@@ -614,7 +664,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
         if path == "/refresh":
-            started, retry_in = self._start_refresh()
+            started, retry_in = _start_refresh()
             payload = {"started": started, "running": _refresh_state["running"]}
             if retry_in:
                 payload["cooldown"] = True
@@ -622,41 +672,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(json.dumps(payload), "application/json")
             return
         self._send("Not found.\n", "text/plain", 404)
-
-    def _start_refresh(self):
-        with _refresh_lock:
-            if _refresh_state["running"]:
-                return False, 0
-            elapsed = time.time() - _refresh_state["last_started"]
-            if elapsed < REFRESH_COOLDOWN:
-                return False, int(REFRESH_COOLDOWN - elapsed)
-            _refresh_state["running"] = True
-            _refresh_state["last_started"] = time.time()
-
-        def run():
-            try:
-                rc = subprocess.run([sys.executable, str(FETCHER)], timeout=600).returncode
-                _refresh_state["last_rc"] = rc
-            except Exception:
-                _refresh_state["last_rc"] = -1
-            finally:
-                _refresh_state["running"] = False
-
-        threading.Thread(target=run, daemon=True).start()
-        return True, 0
-
-    def _auto_fetch_if_stale():
-        """Fetch on startup if edition.json is missing or older than FETCH_TTL_SECONDS."""
-        ttl = int(os.environ.get("FETCH_TTL_SECONDS", "3600"))  # 1 hour default
-        edition_path = NEWS_DIR / "edition.json"
-        if not edition_path.exists():
-            print(f"No edition.json found, fetching now...", flush=True)
-            _start_refresh()
-            return
-        mtime = edition_path.stat().st_mtime
-        if time.time() - mtime > ttl:
-            print(f"edition.json is {int(time.time() - mtime)}s old (> {ttl}s), fetching...", flush=True)
-            _start_refresh()
 
     def log_message(self, fmt, *args):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
@@ -677,7 +692,7 @@ def main():
     except OSError as exc:
         sys.stderr.write("cannot bind %s:%d: %s\n" % (HOST, PORT, exc))
         return 1
-    print("Amberley Times listening on http://%s:%d/" % (HOST, PORT), flush=True)
+    print("Daily Marrow listening on http://%s:%d/" % (HOST, PORT), flush=True)
     # Auto-fetch on startup if edition is missing or stale
     _auto_fetch_if_stale()
     try:

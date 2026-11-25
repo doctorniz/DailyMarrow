@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Daily Marrow -- news site server (port 8091).
+"""Daily Marrow -- news site server (port 5551).
 
 Public (no auth): serves the magazine front-end + edition.json. POST /refresh
-re-runs the fetcher in the background, throttled to one run per
-REFRESH_COOLDOWN seconds (NEWS_REFRESH_COOLDOWN env, default 900) so the site
-is safe to expose to the web behind nginx: a stranger cannot hammer the
-upstream feeds through the refresh button.
+re-runs the fetcher in the background, throttled to one run per refresh
+cooldown (default 900 s) so the site is safe to expose to the web behind
+nginx: a stranger cannot hammer the upstream feeds through the refresh button.
+
+Admin (password): /settings edits the feed list and refresh timings. They are
+saved to NEWS_DIR/settings.json and take effect without a restart.
 """
 
 import gzip
+import hashlib
+import hmac
 import html.parser
+import importlib.util
 import http.server
 import io
 import ipaddress
@@ -17,6 +22,7 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import socket
 import socketserver
 import subprocess
@@ -40,9 +46,9 @@ STATIC_DIR = Path(os.environ.get(
     APP_DIR if (APP_DIR / "index.html").is_file() else NEWS_DIR)).resolve()
 # the fetcher that ships next to this script
 FETCHER = Path(os.environ.get("NEWS_FETCHER", APP_DIR / "news_fetch.py")).resolve()
-PORT = int(os.environ.get("NEWS_PORT", "8091"))
+PORT = int(os.environ.get("NEWS_PORT", "5551"))
 HOST = os.environ.get("NEWS_HOST", "0.0.0.0")
-REFRESH_COOLDOWN = int(os.environ.get("NEWS_REFRESH_COOLDOWN", "900"))
+SETTINGS_PATH = NEWS_DIR / "settings.json"
 
 _refresh_lock = threading.Lock()
 _refresh_state = {"running": False, "last_rc": None, "last_started": 0.0}
@@ -528,14 +534,269 @@ def _rate_ok(ip):
         return True
 
 
-def _start_refresh():
-    """Run the fetcher in the background. Returns (started, retry_in_seconds)."""
+# ------------------------------------------------------------------ settings
+# Runtime settings live in NEWS_DIR/settings.json (next to edition.json, so the
+# Docker volume keeps them). Environment variables only supply the starting
+# values: once a value is saved from /settings, the saved value wins.
+
+def _env_int(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+ENV_DEFAULTS = {
+    "fetch_ttl_seconds": _env_int("FETCH_TTL_SECONDS", 3600),
+    "refresh_cooldown_seconds": _env_int("NEWS_REFRESH_COOLDOWN", 900),
+}
+ENV_ADMIN_PASSWORD = os.environ.get("NEWS_ADMIN_PASSWORD", "")
+SECTION_KINDS = ("news", "curated")
+_settings_lock = threading.Lock()
+
+
+def _load_fetch_module():
+    """news_fetch.py from the app folder, for its built-in feed list."""
+    try:
+        spec = importlib.util.spec_from_file_location("news_fetch", APP_DIR / "news_fetch.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception as exc:
+        sys.stderr.write("could not load news_fetch.py defaults: %s\n" % exc)
+        return None
+
+
+_fetch_mod = _load_fetch_module()
+
+
+def _default_sections():
+    if _fetch_mod is None:
+        return []
+    return _fetch_mod.sections_to_json(_fetch_mod.DEFAULT_SECTIONS)
+
+
+def _read_settings():
+    try:
+        data = json.loads(SETTINGS_PATH.read_text("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        sys.stderr.write("settings.json unreadable, ignoring it: %s\n" % exc)
+        return {}
+
+
+def _write_settings(data):
+    NEWS_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = SETTINGS_PATH.with_suffix(".json.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, SETTINGS_PATH)
+
+
+def _setting(key):
+    val = _read_settings().get(key)
+    return val if isinstance(val, int) else ENV_DEFAULTS[key]
+
+
+def _cooldown():
+    return _setting("refresh_cooldown_seconds")
+
+
+def _int_in(val, lo, hi):
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, float) and val.is_integer():
+        val = int(val)
+    if isinstance(val, int) and lo <= val <= hi:
+        return val
+    return None
+
+
+def _num_in(val, lo, hi):
+    if isinstance(val, bool) or not isinstance(val, (int, float)):
+        return None
+    return val if lo <= val <= hi else None
+
+
+def _validate_sections(raw):
+    """Clean the feed list sent by the settings page. Returns (sections, errors)."""
+    errors = []
+    if not isinstance(raw, list) or not raw:
+        return None, ["Add at least one section."]
+    if len(raw) > 40:
+        return None, ["At most 40 sections."]
+    out, ids, n_feeds = [], set(), 0
+    for i, sec in enumerate(raw, 1):
+        if not isinstance(sec, dict):
+            errors.append("Section %d is malformed." % i)
+            continue
+        title = str(sec.get("title", "")).strip()[:60]
+        label = title or "Section %d" % i
+        sid = str(sec.get("id", "")).strip().lower()
+        if not sid:
+            sid = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+        if not title:
+            errors.append("%s needs a title." % label)
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", sid or ""):
+            errors.append("%s: the id may only use a-z, 0-9 and hyphens." % label)
+        elif sid in ids:
+            errors.append("%s: the id \u201c%s\u201d is used twice." % (label, sid))
+        ids.add(sid)
+        kind = sec.get("kind", "news")
+        if kind not in SECTION_KINDS:
+            errors.append("%s: unknown kind." % label)
+        cap = _int_in(sec.get("cap"), 1, 60)
+        if cap is None:
+            errors.append("%s: show between 1 and 60 stories." % label)
+        feeds = []
+        raw_feeds = sec.get("feeds")
+        if not isinstance(raw_feeds, list) or not raw_feeds:
+            errors.append("%s needs at least one feed." % label)
+            raw_feeds = []
+        for j, f in enumerate(raw_feeds, 1):
+            if not isinstance(f, dict):
+                errors.append("%s, feed %d is malformed." % (label, j))
+                continue
+            name = str(f.get("name", "")).strip()[:80]
+            url = str(f.get("url", "")).strip()
+            age = _num_in(f.get("max_age_hours"), 1, 24 * 365)
+            flabel = "%s, %s" % (label, name or "feed %d" % j)
+            if not name:
+                errors.append("%s needs a name." % flabel)
+            parsed = urllib.parse.urlparse(url)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc or len(url) > 2000:
+                errors.append("%s: the URL must start with http:// or https://." % flabel)
+            if age is None:
+                errors.append("%s: max age must be 1 to 8760 hours." % flabel)
+            feeds.append({"name": name, "url": url, "max_age_hours": age})
+        n_feeds += len(feeds)
+        out.append({"id": sid, "title": title, "kind": kind, "cap": cap, "feeds": feeds})
+    if n_feeds > 300:
+        errors.append("At most 300 feeds in total.")
+    return (None if errors else out), errors
+
+
+def _settings_view():
+    """Everything the settings page shows (never the password hash)."""
+    data = _read_settings()
+    saved = data.get("sections")
+    errors = {}
+    try:
+        ed = json.loads((NEWS_DIR / "edition.json").read_text("utf-8"))
+        for line in ed.get("errors") or []:
+            key, _, msg = str(line).partition(": ")
+            errors[key] = msg
+        generated = ed.get("generated_human", "")
+    except Exception:
+        generated = ""
+    return {
+        "fetch_ttl_seconds": _setting("fetch_ttl_seconds"),
+        "refresh_cooldown_seconds": _setting("refresh_cooldown_seconds"),
+        "sections": saved if saved else _default_sections(),
+        "custom_feeds": bool(saved),
+        "feed_errors": errors,
+        "edition_generated": generated,
+        "refresh": dict(_refresh_state),
+        "password_from_env": bool(ENV_ADMIN_PASSWORD),
+        "updated": data.get("updated", ""),
+        "server": {
+            "NEWS_PORT": PORT, "NEWS_HOST": HOST, "NEWS_DIR": str(NEWS_DIR),
+            "NEWS_STATIC_DIR": str(STATIC_DIR), "NEWS_FETCHER": str(FETCHER),
+        },
+    }
+
+
+# ------------------------------------------------------------- admin access
+# One admin password guards /settings. It comes from NEWS_ADMIN_PASSWORD when
+# set, otherwise it is chosen on first visit using a one-time setup code that
+# the server prints to its log (so a stranger who finds the page first cannot
+# claim it). Sessions are random tokens held in memory, sent as an HttpOnly,
+# SameSite=Strict cookie; every admin POST also needs a custom header, which
+# a cross-site form or fetch cannot send without a CORS preflight we refuse.
+
+PBKDF2_ITERS = 240_000
+SESSION_TTL = 12 * 3600
+SESSION_COOKIE = "dm_admin"
+ADMIN_HEADER = "X-Daily-Marrow"
+_sessions = {}            # token -> expiry
+_session_lock = threading.Lock()
+_setup_code = {"code": ""}
+_login_buckets = {}
+LOGIN_WINDOW = 600.0
+LOGIN_MAX = 10            # attempts per IP per 10 minutes
+
+
+def _hash_password(password, salt=None, iters=PBKDF2_ITERS):
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iters)
+    return {"salt": salt.hex(), "hash": digest.hex(), "iterations": iters}
+
+
+def _password_set():
+    return bool(ENV_ADMIN_PASSWORD) or bool(_read_settings().get("admin"))
+
+
+def _check_password(password):
+    if ENV_ADMIN_PASSWORD:
+        return hmac.compare_digest(password.encode("utf-8"), ENV_ADMIN_PASSWORD.encode("utf-8"))
+    rec = _read_settings().get("admin") or {}
+    try:
+        trial = _hash_password(password, bytes.fromhex(rec["salt"]), int(rec["iterations"]))
+        return hmac.compare_digest(trial["hash"], rec["hash"])
+    except Exception:
+        return False
+
+
+def _ensure_setup_code():
+    """Print a one-time setup code when no admin password exists yet."""
+    if _password_set():
+        _setup_code["code"] = ""
+        return
+    if not _setup_code["code"]:
+        _setup_code["code"] = "-".join(secrets.token_hex(2) for _ in range(3))
+    print("Settings are locked until an admin password is chosen. Open /settings "
+          "and enter this setup code: %s" % _setup_code["code"], flush=True)
+
+
+def _new_session():
+    token = secrets.token_urlsafe(32)
+    now = time.time()
+    with _session_lock:
+        for k in [k for k, exp in _sessions.items() if exp < now]:
+            del _sessions[k]
+        if len(_sessions) > 50:
+            del _sessions[min(_sessions, key=_sessions.get)]
+        _sessions[token] = now + SESSION_TTL
+    return token
+
+
+def _login_rate_ok(ip):
+    now = time.time()
+    with _bucket_lock:
+        hits = [t for t in _login_buckets.get(ip, []) if now - t < LOGIN_WINDOW]
+        ok = len(hits) < LOGIN_MAX
+        if ok:
+            hits.append(now)
+        _login_buckets[ip] = hits
+        if len(_login_buckets) > 5000:
+            _login_buckets.clear()
+        return ok
+
+
+def _start_refresh(force=False):
+    """Run the fetcher in the background. Returns (started, retry_in_seconds).
+
+    force skips the cooldown (used by the admin after saving new feeds)."""
+    cooldown = _cooldown()
     with _refresh_lock:
         if _refresh_state["running"]:
             return False, 0
         elapsed = time.time() - _refresh_state["last_started"]
-        if elapsed < REFRESH_COOLDOWN:
-            return False, int(REFRESH_COOLDOWN - elapsed)
+        if elapsed < cooldown and not force:
+            return False, int(cooldown - elapsed)
         _refresh_state["running"] = True
         _refresh_state["last_started"] = time.time()
 
@@ -553,30 +814,48 @@ def _start_refresh():
 
 
 def _auto_fetch_if_stale():
-    """Fetch on startup if edition.json is missing or older than FETCH_TTL_SECONDS."""
-    ttl = int(os.environ.get("FETCH_TTL_SECONDS", "3600"))  # 1 hour default
+    """Fetch if edition.json is missing or older than the edition max age.
+
+    A max age of 0 turns automatic fetching off (Refresh still works)."""
+    ttl = _setting("fetch_ttl_seconds")
     edition_path = NEWS_DIR / "edition.json"
     if not edition_path.exists():
-        print("No edition.json found, fetching now...", flush=True)
-        _start_refresh()
+        # retried each minute until one lands, still bound by the cooldown
+        if _start_refresh()[0]:
+            print("No edition.json found, fetching now...", flush=True)
+        return
+    if ttl <= 0 or _refresh_state["running"]:
         return
     age = time.time() - edition_path.stat().st_mtime
     if age > ttl:
-        print("edition.json is %ds old (> %ds), fetching..." % (age, ttl), flush=True)
-        _start_refresh()
+        started, _ = _start_refresh()
+        if started:
+            print("edition.json is %ds old (> %ds), fetching..." % (age, ttl), flush=True)
+
+
+def _auto_fetch_loop():
+    """Keep the edition fresh while the server runs, checking once a minute."""
+    while True:
+        time.sleep(60)
+        try:
+            _auto_fetch_if_stale()
+        except Exception as exc:
+            sys.stderr.write("auto-fetch check failed: %s\n" % exc)
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "DailyMarrow/1.0"
     protocol_version = "HTTP/1.1"
 
-    def _send(self, data, ctype="text/html; charset=utf-8", status=200, cache=False):
+    def _send(self, data, ctype="text/html; charset=utf-8", status=200, cache=False, headers=None):
         if isinstance(data, str):
             data = data.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "public, max-age=604800" if cache else "no-cache")
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(data)
 
@@ -617,6 +896,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if path == "/refresh-status":
             self._send(json.dumps(_refresh_state), "application/json")
+            return
+        if path == "/settings":
+            self._file("settings.html")
+            return
+        if path == "/api/settings":
+            if not self._authed():
+                self._json({"auth": False, "setup": not _password_set()}, 401)
+                return
+            view = _settings_view()
+            view["auth"] = True
+            self._json(view)
             return
         # nothing else is public: STATIC_DIR may be the app folder, which also
         # holds the server source (and .git in a checkout)
@@ -661,8 +951,154 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(body, "application/json",
                    status=200 if payload.get("ok") or payload.get("reason") == "short-or-gated" else 502)
 
+    # ---------------------------------------------------------------- admin
+    def _json(self, payload, status=200, headers=None):
+        self._send(json.dumps(payload), "application/json", status, headers=headers)
+
+    def _session_token(self):
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == SESSION_COOKIE:
+                return v
+        return ""
+
+    def _authed(self):
+        token = self._session_token()
+        if not token:
+            return False
+        with _session_lock:
+            exp = _sessions.get(token)
+            if exp and exp > time.time():
+                return True
+            _sessions.pop(token, None)
+        return False
+
+    def _cookie(self, token, max_age):
+        return {"Set-Cookie": "%s=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=%d"
+                % (SESSION_COOKIE, token, max_age)}
+
+    def _body_json(self, limit=512 * 1024):
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            n = -1
+        if n < 0 or n > limit:
+            return None
+        try:
+            data = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
+        except Exception:
+            return None
+        return data if isinstance(data, dict) else None
+
+    def _admin_post(self, path):
+        if self.headers.get(ADMIN_HEADER) != "1":
+            self._json({"ok": False, "error": "Missing request header."}, 403)
+            return
+        body = self._body_json()
+        if body is None:
+            self._json({"ok": False, "error": "Bad request."}, 400)
+            return
+
+        if path == "/api/settings/login":
+            if not _login_rate_ok(self._client_ip()):
+                self._json({"ok": False, "error": "Too many attempts. Wait a few minutes."}, 429)
+                return
+            if _password_set():
+                if not _check_password(str(body.get("password", ""))):
+                    self._json({"ok": False, "error": "That password is not right."}, 403)
+                    return
+            else:
+                code = str(body.get("setup_code", "")).strip().lower()
+                new = str(body.get("new_password", ""))
+                if not _setup_code["code"] or not hmac.compare_digest(code, _setup_code["code"]):
+                    self._json({"ok": False, "error": "That setup code is not right. "
+                                "It is printed in the server log."}, 403)
+                    return
+                if len(new) < 8:
+                    self._json({"ok": False, "error": "Choose a password of at least 8 characters."}, 400)
+                    return
+                with _settings_lock:
+                    data = _read_settings()
+                    data["admin"] = _hash_password(new)
+                    _write_settings(data)
+                _setup_code["code"] = ""
+            self._json({"ok": True}, headers=self._cookie(_new_session(), SESSION_TTL))
+            return
+
+        if path == "/api/settings/logout":
+            with _session_lock:
+                _sessions.pop(self._session_token(), None)
+            self._json({"ok": True}, headers=self._cookie("", 0))
+            return
+
+        if not self._authed():
+            self._json({"ok": False, "error": "Please sign in again."}, 401)
+            return
+
+        if path == "/api/settings":
+            errors = []
+            ttl = _int_in(body.get("fetch_ttl_seconds"), 0, 7 * 86400)
+            if ttl is None or 0 < ttl < 300:
+                errors.append("Edition max age must be off, or between 5 minutes and 7 days.")
+            cooldown = _int_in(body.get("refresh_cooldown_seconds"), 60, 86400)
+            if cooldown is None:
+                errors.append("Refresh cooldown must be between 1 minute and 24 hours.")
+            sections = None
+            if body.get("sections") is not None:
+                sections, sec_errors = _validate_sections(body.get("sections"))
+                errors += sec_errors
+            if errors:
+                self._json({"ok": False, "errors": errors}, 400)
+                return
+            with _settings_lock:
+                data = _read_settings()
+                data["fetch_ttl_seconds"] = ttl
+                data["refresh_cooldown_seconds"] = cooldown
+                if sections is None:
+                    data.pop("sections", None)  # back to the built-in feed list
+                else:
+                    data["sections"] = sections
+                data["updated"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+                _write_settings(data)
+            started = False
+            if body.get("refresh_now"):
+                started, _ = _start_refresh(force=True)
+            view = _settings_view()
+            view.update(ok=True, auth=True, refresh_started=started)
+            self._json(view)
+            return
+
+        if path == "/api/settings/password":
+            if ENV_ADMIN_PASSWORD:
+                self._json({"ok": False, "error": "The password is set by NEWS_ADMIN_PASSWORD "
+                            "and can only be changed there."}, 400)
+                return
+            if not _check_password(str(body.get("current", ""))):
+                self._json({"ok": False, "error": "The current password is not right."}, 403)
+                return
+            new = str(body.get("new", ""))
+            if len(new) < 8:
+                self._json({"ok": False, "error": "Choose a password of at least 8 characters."}, 400)
+                return
+            with _settings_lock:
+                data = _read_settings()
+                data["admin"] = _hash_password(new)
+                _write_settings(data)
+            # sign out every other browser
+            token = self._session_token()
+            with _session_lock:
+                for k in [k for k in _sessions if k != token]:
+                    del _sessions[k]
+            self._json({"ok": True})
+            return
+
+        self._json({"ok": False, "error": "Not found."}, 404)
+
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/api/settings"):
+            self._admin_post(path)
+            return
         if path == "/refresh":
             started, retry_in = _start_refresh()
             payload = {"started": started, "running": _refresh_state["running"]}
@@ -693,8 +1129,10 @@ def main():
         sys.stderr.write("cannot bind %s:%d: %s\n" % (HOST, PORT, exc))
         return 1
     print("Daily Marrow listening on http://%s:%d/" % (HOST, PORT), flush=True)
-    # Auto-fetch on startup if edition is missing or stale
+    _ensure_setup_code()
+    # Auto-fetch on startup if edition is missing or stale, then keep checking
     _auto_fetch_if_stale()
+    threading.Thread(target=_auto_fetch_loop, daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

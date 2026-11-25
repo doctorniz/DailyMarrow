@@ -4,13 +4,17 @@ services:
   daily-marrow:
     build: .
     ports:
-      - "8091:8091"
+      - "5551:5551"
     volumes:
       - news-data:/app/news
     environment:
-      - NEWS_PORT=8091
+      - NEWS_PORT=5551
       - NEWS_HOST=0.0.0.0
+      # Starting values only: once saved on the /settings page, the saved values win.
       - FETCH_TTL_SECONDS=3600
+      # Optional fixed admin password for /settings. Without it, the server
+      # prints a one-time setup code to its log on first run.
+      # - NEWS_ADMIN_PASSWORD=change-me
     restart: unless-stopped
 
 volumes:

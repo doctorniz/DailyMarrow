@@ -144,7 +144,7 @@ Nothing else is served, so the server source and `.git` folder are never exposed
 
 ```
  ┌──────────────┐   RSS / Atom / YouTube   ┌───────────────┐   edition.json   ┌──────────────┐
- │  33 feeds     │ ───────────────────────▶ │ news_fetch.py │ ───────────────▶ │ news_server  │ ──▶ browser
+ │   33 feeds   │ ───────────────────────▶ │ news_fetch.py │ ───────────────▶ │ news_server  │ ──▶ browser
  └──────────────┘    fetched in parallel   └───────────────┘   (NEWS_DIR)     │   :8091      │
                                                     ▲                         └──────┬───────┘
                                                     └──── startup if stale / POST /refresh

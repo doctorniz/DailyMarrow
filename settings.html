@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Settings · Daily Marrow</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script>
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('at-theme'); } catch (e) {}
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+@font-face{font-family:'Fraunces';src:url('/fonts/Fraunces.woff2') format('woff2');font-weight:100 900;font-style:normal;font-display:swap}
+@font-face{font-family:'Fraunces';src:url('/fonts/Fraunces-Italic.woff2') format('woff2');font-weight:100 900;font-style:italic;font-display:swap}
+
+/* same tokens as the front page */
+:root{
+  --bg:#efeeea;--bg-2:#f7f6f3;--ink:#1a1a18;--ink-2:#5f5c56;--rule:#d8d5cd;
+  --accent:#7d6320;--button:#1a1a18;--button-ink:#f7f6f3;--bad:#a3301f;
+  --ghost:rgba(26,26,24,.22);--shadow:rgba(26,26,24,.2);
+  --serif:'Fraunces',Georgia,'Times New Roman',serif;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --gutter:clamp(16px,5vw,48px);
+}
+:root[data-theme="dark"]{
+  --bg:#0a0908;--bg-2:#13110e;--ink:#f0ede4;--ink-2:#a8a295;--rule:#2b2723;
+  --accent:#c9a24a;--button:#daa520;--button-ink:#0a0908;--bad:#e0806f;
+  --ghost:rgba(240,237,228,.24);--shadow:rgba(0,0,0,.55);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme]){
+    --bg:#0a0908;--bg-2:#13110e;--ink:#f0ede4;--ink-2:#a8a295;--rule:#2b2723;
+    --accent:#c9a24a;--button:#daa520;--button-ink:#0a0908;--bad:#e0806f;
+    --ghost:rgba(240,237,228,.24);--shadow:rgba(0,0,0,.55);
+  }
+}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;overflow-x:clip}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--sans);
+  -webkit-font-smoothing:antialiased;overflow-x:clip}
+a{color:inherit;text-underline-offset:.18em;text-decoration-thickness:1px}
+:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:4px}
+h1,h2,h3{font-family:var(--serif);font-weight:400;margin:0;letter-spacing:-.01em}
+p{margin:0}
+[hidden]{display:none!important}
+
+.wrap{width:100%;max-width:1000px;margin:0 auto;padding-inline:var(--gutter)}
+header.bar{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding-top:max(20px,env(safe-area-inset-top));padding-bottom:18px}
+.brand{font-family:var(--serif);font-size:clamp(1.45rem,3.4vw,2.1rem);font-weight:600;line-height:1;
+  font-variation-settings:"opsz" 144,"SOFT" 0;letter-spacing:-.02em;text-decoration:none}
+.brand .sub{font-weight:400;font-style:italic}
+.bar-right{display:flex;align-items:center;gap:14px;flex:none}
+.bar-right a,.linkish{font-size:.9rem;color:var(--ink-2);text-decoration:none;background:none;border:0;
+  cursor:pointer;padding:0;font-family:var(--sans)}
+.bar-right a:hover,.linkish:hover{color:var(--ink);text-decoration:underline}
+
+.dateline{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;
+  border-top:2px solid var(--ink);border-bottom:1px solid var(--rule);padding:.55rem 0 .6rem;
+  font:italic .95rem/1.4 var(--serif);color:var(--ink-2)}
+.dateline .mid{font-style:normal;font-weight:600;letter-spacing:.02em;text-transform:uppercase;
+  font-size:.9rem;color:var(--ink)}
+
+.eyebrow{display:block;font:500 .74rem/1.4 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:.5rem}
+.note{font:italic .95rem/1.5 var(--serif);color:var(--ink-2)}
+.note code,.mono{font:500 .82rem/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-style:normal}
+
+.button{display:inline-flex;align-items:center;gap:10px;background:var(--button);color:var(--button-ink);
+  border:1px solid transparent;border-radius:12px;padding:10px 18px;font:500 .95rem/1.1 var(--sans);
+  cursor:pointer;text-decoration:none}
+.button:hover{opacity:.9}
+.button:disabled{opacity:.45;cursor:wait}
+.button.ghost{background:transparent;color:var(--ink);border-color:var(--ghost)}
+.button.small{padding:7px 13px;border-radius:999px;font-size:.84rem}
+.theme-toggle{width:38px;height:38px;padding:0;border:0;border-radius:10px;background:transparent;
+  color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.theme-toggle:hover{color:var(--ink)}
+.theme-toggle svg{width:18px;height:18px;pointer-events:none}
+.theme-toggle .sun{display:none}
+:root[data-theme="dark"] .theme-toggle .sun{display:block}
+:root[data-theme="dark"] .theme-toggle .moon{display:none}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme]) .theme-toggle .sun{display:block}
+  :root:not([data-theme]) .theme-toggle .moon{display:none}
+}
+
+/* ── page furniture ── */
+.lede{padding:clamp(22px,3vw,40px) 0 clamp(18px,3vw,30px);border-bottom:1px solid var(--rule)}
+.lede h1{font-weight:500;font-size:clamp(1.9rem,4.6vw,3rem);line-height:1.02;letter-spacing:-.02em;
+  font-variation-settings:"opsz" 100}
+.lede p{margin-top:.8rem;max-width:40rem}
+section.block{padding-top:clamp(30px,4.5vw,52px)}
+.sec-head{display:flex;align-items:baseline;gap:1rem;flex-wrap:wrap;border-top:2px solid var(--ink);
+  padding-top:.85rem;margin-bottom:1.2rem}
+.sec-head h2{font-size:clamp(1.35rem,2.8vw,1.85rem);font-weight:600;line-height:1;font-variation-settings:"opsz" 72}
+.sec-head .aside{margin-left:auto}
+
+/* ── form controls ── */
+label.f{display:block;min-width:0}
+label.f > span:first-child{display:block;font:500 .7rem/1.4 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-2);margin-bottom:.3rem}
+input[type=text],input[type=password],input[type=url],input[type=number],select{
+  width:100%;min-width:0;font:400 .95rem/1.3 var(--sans);color:var(--ink);background:var(--bg-2);
+  border:1px solid var(--rule);border-radius:8px;padding:.55rem .65rem}
+input:focus,select:focus{outline:none;border-color:var(--ink)}
+input.bad{border-color:var(--bad)}
+.unit{display:flex;align-items:center;gap:.5rem}
+.unit input{max-width:8rem}
+.unit em{font:italic .92rem/1 var(--serif);color:var(--ink-2)}
+.row2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px}
+.row2 .note{margin-top:.35rem;font-size:.88rem}
+@media (max-width:640px){.row2{grid-template-columns:minmax(0,1fr)}}
+
+/* ── sign-in card ── */
+.card{max-width:26rem;margin:clamp(30px,6vw,70px) auto;background:var(--bg-2);border-top:3px solid var(--ink);
+  padding:26px 26px 28px;box-shadow:0 18px 40px -18px var(--shadow)}
+.card h2{font-weight:500;font-size:1.6rem;line-height:1.1;margin-bottom:.6rem}
+.card form{display:grid;gap:14px;margin-top:18px}
+.msg{font:italic .92rem/1.45 var(--serif);color:var(--bad)}
+.msg.ok{color:var(--accent)}
+
+/* ── desks (sections) ── */
+.desk{border-top:1px solid var(--ink);padding:16px 0 20px;margin-top:6px}
+.desk-head{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr) minmax(0,.8fr) auto;
+  gap:12px;align-items:end}
+.desk-head .title input{font:500 1.15rem/1.2 var(--serif)}
+.desk-tools{display:flex;gap:4px;padding-bottom:4px}
+.icon{width:32px;height:32px;border:1px solid var(--rule);border-radius:50%;background:transparent;
+  color:var(--ink-2);font:400 .95rem/1 var(--sans);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.icon:hover{color:var(--ink);border-color:var(--ink)}
+.icon:disabled{opacity:.3;cursor:default}
+.icon.del:hover{color:var(--bad);border-color:var(--bad)}
+.feeds{margin-top:14px;border-top:1px solid var(--rule)}
+.feed{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,2.6fr) 6.5rem auto;gap:10px;
+  align-items:center;padding:8px 0;border-bottom:1px solid var(--rule)}
+.feed input{padding:.45rem .55rem;font-size:.9rem}
+.feed .err{grid-column:1 / -1;font:italic .85rem/1.4 var(--serif);color:var(--bad);overflow-wrap:anywhere}
+.feeds-head{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,2.6fr) 6.5rem 32px;gap:10px;
+  padding:8px 0 2px;font:500 .66rem/1.4 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)}
+.add-feed{margin-top:10px}
+@media (max-width:760px){
+  .desk-head{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .desk-head .title{grid-column:1 / -1}
+  .desk-tools{grid-column:1 / -1;justify-content:flex-end}
+  .feeds-head{display:none}
+  .feed{grid-template-columns:minmax(0,1fr) 6rem 32px}
+  .feed .url{grid-column:1 / -1;grid-row:2}
+}
+
+.server{width:100%;border-collapse:collapse;font-size:.92rem}
+.server th,.server td{text-align:left;padding:.5rem .6rem .5rem 0;border-bottom:1px solid var(--rule);vertical-align:top}
+.server th{font:500 .74rem/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink-2);white-space:nowrap}
+.server td{overflow-wrap:anywhere}
+
+/* ── save bar ── */
+.savebar{position:sticky;bottom:0;z-index:20;margin-top:clamp(36px,5vw,56px);background:var(--bg);
+  border-top:2px solid var(--ink);padding:14px 0 max(14px,env(safe-area-inset-bottom));
+  display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center}
+.savebar .status{flex:1 1 14rem;font:italic .95rem/1.4 var(--serif);color:var(--ink-2)}
+.savebar .status.dirty{color:var(--accent)}
+.errors{margin:16px 0 0;padding:12px 16px;border-left:3px solid var(--bad);background:var(--bg-2);
+  font-size:.92rem;color:var(--bad)}
+.errors ul{margin:.3rem 0 0;padding-left:1.1rem}
+
+footer{border-top:1px solid var(--rule);margin-top:40px;padding:28px 0 max(36px,env(safe-area-inset-bottom));
+  font-size:.88rem;color:var(--ink-2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <a class="brand" href="/">Daily <span class="sub">Marrow</span></a>
+    <div class="bar-right">
+      <a href="/">Front page</a>
+      <button class="linkish" id="logoutBtn" type="button" hidden>Sign out</button>
+      <button class="theme-toggle" id="themeBtn" type="button" aria-label="Switch between the day and night editions">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/>
+        </svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="dateline">
+    <span>The Press Room</span>
+    <span class="mid">Settings</span>
+    <span id="lastEdition">&mdash;</span>
+  </div>
+
+  <!-- sign in / first-time setup -->
+  <div class="card" id="loginCard" hidden>
+    <span class="eyebrow">Staff only</span>
+    <h2 id="loginTitle">Sign in to the press room</h2>
+    <p class="note" id="loginNote">Enter the admin password to change feeds and timings.</p>
+    <form id="loginForm" autocomplete="on">
+      <label class="f" id="codeField" hidden><span>Setup code</span>
+        <input type="text" id="setupCode" autocomplete="one-time-code" spellcheck="false" placeholder="xxxx-xxxx-xxxx"></label>
+      <label class="f"><span id="pwLabel">Password</span>
+        <input type="password" id="password" autocomplete="current-password" required></label>
+      <label class="f" id="confirmField" hidden><span>Repeat password</span>
+        <input type="password" id="password2" autocomplete="new-password"></label>
+      <p class="msg" id="loginMsg" role="alert"></p>
+      <div><button class="button" type="submit" id="loginBtn">Sign in</button></div>
+    </form>
+  </div>
+
+  <main id="settings" hidden>
+    <div class="lede">
+      <span class="eyebrow">Settings</span>
+      <h1>How the edition is made</h1>
+      <p class="note">Changes are saved to <span class="mono">settings.json</span> next to the edition and take effect straight away, with no restart or rebuild.</p>
+    </div>
+
+    <section class="block" aria-labelledby="hSchedule">
+      <div class="sec-head"><h2 id="hSchedule">Printing schedule</h2></div>
+      <div class="row2">
+        <div>
+          <label class="f"><span>Re-print when the edition is older than</span>
+            <span class="unit"><input type="number" id="ttl" min="0" max="10080" step="1"><em>minutes</em></span></label>
+          <p class="note">Checked on startup and once a minute. Use 0 to print only when someone presses Refresh.</p>
+        </div>
+        <div>
+          <label class="f"><span>Minimum gap between refreshes</span>
+            <span class="unit"><input type="number" id="cooldown" min="1" max="1440" step="1"><em>minutes</em></span></label>
+          <p class="note">Stops visitors hammering the feeds through the Refresh button. Saving with &ldquo;re-print now&rdquo; skips it.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="hDesks">
+      <div class="sec-head">
+        <h2 id="hDesks">Desks &amp; feeds</h2>
+        <span class="aside"><button class="linkish" type="button" id="restoreBtn">Restore the built-in feeds</button></span>
+      </div>
+      <p class="note" id="feedSource"></p>
+      <div id="desks"></div>
+      <p style="margin-top:18px"><button class="button ghost small" type="button" id="addDesk">+ Add a desk</button></p>
+    </section>
+
+    <section class="block" aria-labelledby="hPw" id="pwSection">
+      <div class="sec-head"><h2 id="hPw">Admin password</h2></div>
+      <p class="note" id="pwEnvNote" hidden>The password comes from the <code>NEWS_ADMIN_PASSWORD</code> environment variable, so it can only be changed there.</p>
+      <form id="pwForm" class="row2" autocomplete="off">
+        <label class="f"><span>Current password</span><input type="password" id="pwCur" autocomplete="current-password" required></label>
+        <span></span>
+        <label class="f"><span>New password</span><input type="password" id="pwNew" autocomplete="new-password" minlength="8" required></label>
+        <label class="f"><span>Repeat new password</span><input type="password" id="pwNew2" autocomplete="new-password" minlength="8" required></label>
+        <div><button class="button ghost small" type="submit">Change password</button> <span class="msg" id="pwMsg" role="status"></span></div>
+      </form>
+    </section>
+
+    <section class="block" aria-labelledby="hServer">
+      <div class="sec-head"><h2 id="hServer">Server</h2></div>
+      <p class="note" style="margin-bottom:12px">These are read when the server starts, so they stay as environment variables (see <span class="mono">docker-compose.yml</span>). Change them there and restart.</p>
+      <table class="server"><tbody id="serverRows"></tbody></table>
+    </section>
+
+    <div class="savebar">
+      <span class="status" id="saveStatus">All changes saved.</span>
+      <button class="button ghost" type="button" id="saveBtn">Save</button>
+      <button class="button" type="button" id="saveRefreshBtn">Save &amp; re-print now</button>
+    </div>
+    <div class="errors" id="errors" role="alert" hidden></div>
+  </main>
+
+  <footer>Daily Marrow &middot; settings are saved on the server, not in this browser.</footer>
+</div>
+
+<script>
+(function(){
+  var root = document.documentElement;
+  function effective(){
+    var a = root.getAttribute('data-theme');
+    if (a === 'light' || a === 'dark') return a;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.getElementById('themeBtn').addEventListener('click', function(){
+    var next = effective() === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('at-theme', next); } catch (e) {}
+  });
+
+  function $(id){ return document.getElementById(id); }
+  function el(tag, attrs, kids){
+    var n = document.createElement(tag);
+    for (var k in (attrs || {})) {
+      if (k === 'text') n.textContent = attrs[k];
+      else if (k === 'on') for (var ev in attrs.on) n.addEventListener(ev, attrs.on[ev]);
+      else n.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function(c){ if (c) n.appendChild(c); });
+    return n;
+  }
+  function api(path, body){
+    var opt = {credentials:'same-origin', headers:{}};
+    if (body !== undefined) {
+      opt.method = 'POST';
+      opt.headers['Content-Type'] = 'application/json';
+      opt.headers['X-Daily-Marrow'] = '1';
+      opt.body = JSON.stringify(body);
+    }
+    return fetch(path, opt).then(function(r){
+      return r.json().catch(function(){ return {}; }).then(function(d){ d._status = r.status; return d; });
+    });
+  }
+
+  var state = null;      // what the page is editing
+  var feedErrors = {};
+  var dirty = false;
+
+  /* ── sign in ── */
+  var setupMode = false;
+  function showLogin(setup){
+    setupMode = setup;
+    $('settings').hidden = true; $('logoutBtn').hidden = true; $('loginCard').hidden = false;
+    $('codeField').hidden = !setup; $('confirmField').hidden = !setup;
+    $('setupCode').required = setup; $('password2').required = setup;
+    $('loginTitle').textContent = setup ? 'Set up the press room' : 'Sign in to the press room';
+    $('loginNote').innerHTML = setup
+      ? 'No admin password has been chosen yet. Enter the setup code printed in the server log (<code>docker compose logs</code>), then choose a password.'
+      : 'Enter the admin password to change feeds and timings.';
+    $('pwLabel').textContent = setup ? 'New password' : 'Password';
+    $('password').autocomplete = setup ? 'new-password' : 'current-password';
+    $('loginBtn').textContent = setup ? 'Set password' : 'Sign in';
+    (setup ? $('setupCode') : $('password')).focus();
+  }
+  $('loginForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var msg = $('loginMsg'); msg.textContent = '';
+    var body;
+    if (setupMode) {
+      if ($('password').value !== $('password2').value) { msg.textContent = 'The two passwords do not match.'; return; }
+      body = {setup_code: $('setupCode').value, new_password: $('password').value};
+    } else {
+      body = {password: $('password').value};
+    }
+    $('loginBtn').disabled = true;
+    api('/api/settings/login', body).then(function(d){
+      $('loginBtn').disabled = false;
+      if (!d.ok) { msg.textContent = d.error || 'Could not sign in.'; return; }
+      $('password').value = $('password2').value = $('setupCode').value = '';
+      load();
+    }).catch(function(){ $('loginBtn').disabled = false; msg.textContent = 'The server did not answer.'; });
+  });
+  $('logoutBtn').addEventListener('click', function(){
+    api('/api/settings/logout', {}).then(function(){ location.reload(); });
+  });
+
+  /* ── load ── */
+  function load(){
+    api('/api/settings').then(function(d){
+      if (d._status === 401) { showLogin(!!d.setup); return; }
+      apply(d);
+      $('loginCard').hidden = true; $('settings').hidden = false; $('logoutBtn').hidden = false;
+    }).catch(function(){
+      $('loginCard').hidden = false; $('loginMsg').textContent = 'The server did not answer.';
+    });
+  }
+
+  function apply(d){
+    state = {
+      ttl: Math.round(d.fetch_ttl_seconds / 60),
+      cooldown: Math.round(d.refresh_cooldown_seconds / 60),
+      sections: JSON.parse(JSON.stringify(d.sections || [])),
+      custom: !!d.custom_feeds
+    };
+    feedErrors = d.feed_errors || {};
+    $('ttl').value = state.ttl;
+    $('cooldown').value = state.cooldown;
+    $('lastEdition').textContent = d.edition_generated ? 'Last printed ' + d.edition_generated : 'No edition yet';
+    $('pwEnvNote').hidden = !d.password_from_env;
+    $('pwForm').hidden = !!d.password_from_env;
+    var rows = $('serverRows'); rows.innerHTML = '';
+    Object.keys(d.server || {}).forEach(function(k){
+      rows.appendChild(el('tr', {}, [el('th', {text:k}), el('td', {text:String(d.server[k])})]));
+    });
+    renderDesks();
+    setDirty(false);
+    $('errors').hidden = true;
+  }
+
+  function feedSourceNote(){
+    $('feedSource').textContent = state.custom
+      ? 'Using your own feed list. The first desk with stories becomes the lead. Desks of kind “curated” are collected but not shown on the page.'
+      : 'Using the built-in feed list from news_fetch.py. Saving here makes it your own copy. The first desk with stories becomes the lead.';
+  }
+
+  /* ── desks ── */
+  function slug(s){ return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32); }
+
+  function renderDesks(){
+    feedSourceNote();
+    var box = $('desks'); box.innerHTML = '';
+    state.sections.forEach(function(sec, i){ box.appendChild(deskNode(sec, i)); });
+  }
+
+  function field(label, input, cls){ return el('label', {'class':'f' + (cls ? ' ' + cls : '')}, [el('span', {text:label}), input]); }
+
+  function deskNode(sec, i){
+    var n = state.sections.length;
+    var title = el('input', {type:'text', maxlength:'60', value:sec.title || '', 'aria-label':'Desk title'});
+    var idIn = el('input', {type:'text', maxlength:'32', value:sec.id || '', spellcheck:'false', 'class':'mono'});
+    var kind = el('select', {}, [el('option', {value:'news', text:'News'}), el('option', {value:'curated', text:'Curated (hidden)'})]);
+    kind.value = sec.kind || 'news';
+    var cap = el('input', {type:'number', min:'1', max:'60', value:sec.cap || 10});
+    title.addEventListener('input', function(){
+      var auto = !sec.id || sec.id === slug(sec.title);
+      sec.title = title.value;
+      if (auto) { sec.id = slug(title.value); idIn.value = sec.id; }
+      setDirty(true);
+    });
+    idIn.addEventListener('input', function(){ sec.id = idIn.value.trim(); setDirty(true); });
+    kind.addEventListener('change', function(){ sec.kind = kind.value; setDirty(true); });
+    cap.addEventListener('input', function(){ sec.cap = Number(cap.value); setDirty(true); });
+
+    var tools = el('div', {'class':'desk-tools'}, [
+      el('button', {'class':'icon', type:'button', title:'Move up', 'aria-label':'Move desk up', on:{click:function(){ move(i, -1); }}}, [document.createTextNode('↑')]),
+      el('button', {'class':'icon', type:'button', title:'Move down', 'aria-label':'Move desk down', on:{click:function(){ move(i, 1); }}}, [document.createTextNode('↓')]),
+      el('button', {'class':'icon del', type:'button', title:'Remove desk', 'aria-label':'Remove desk', on:{click:function(){
+        if (!confirmRemove('the ' + (sec.title || 'untitled') + ' desk and its ' + (sec.feeds || []).length + ' feeds')) return;
+        state.sections.splice(i, 1); renderDesks(); setDirty(true);
+      }}}, [document.createTextNode('×')])
+    ]);
+    tools.children[0].disabled = i === 0;
+    tools.children[1].disabled = i === n - 1;
+
+    var feeds = el('div', {'class':'feeds'}, [el('div', {'class':'feeds-head'}, [
+      el('span', {text:'Source'}), el('span', {text:'Feed URL'}), el('span', {text:'Max age (h)'}), el('span')])]);
+    (sec.feeds = sec.feeds || []).forEach(function(f, j){ feeds.appendChild(feedNode(sec, f, j)); });
+
+    return el('div', {'class':'desk'}, [
+      el('div', {'class':'desk-head'}, [
+        field('Desk', title, 'title'), field('Id', idIn), field('Kind', kind), field('Stories', cap), tools
+      ]),
+      feeds,
+      el('button', {'class':'linkish add-feed', type:'button', text:'+ Add a feed', on:{click:function(){
+        sec.feeds.push({name:'', url:'', max_age_hours:48}); renderDesks(); setDirty(true);
+        var inputs = $('desks').children[i].querySelectorAll('.feed input'); inputs[inputs.length - 3].focus();
+      }}})
+    ]);
+  }
+
+  function feedNode(sec, f, j){
+    var name = el('input', {type:'text', maxlength:'80', value:f.name || '', placeholder:'Source name', 'aria-label':'Source name'});
+    var url = el('input', {type:'url', value:f.url || '', placeholder:'https://…/rss.xml', spellcheck:'false', 'aria-label':'Feed URL'});
+    var age = el('input', {type:'number', min:'1', max:'8760', value:f.max_age_hours || 48, 'aria-label':'Max age in hours'});
+    name.addEventListener('input', function(){ f.name = name.value; setDirty(true); });
+    url.addEventListener('input', function(){ f.url = url.value.trim(); setDirty(true); });
+    age.addEventListener('input', function(){ f.max_age_hours = Number(age.value); setDirty(true); });
+    var row = el('div', {'class':'feed'}, [
+      name, el('span', {'class':'url'}, [url]), age,
+      el('button', {'class':'icon del', type:'button', title:'Remove feed', 'aria-label':'Remove feed', on:{click:function(){
+        sec.feeds.splice(j, 1); renderDesks(); setDirty(true);
+      }}}, [document.createTextNode('×')])
+    ]);
+    url.parentNode.style.minWidth = '0';
+    url.style.width = '100%';
+    var err = feedErrors[(sec.id || '') + '/' + (f.name || '')];
+    if (err) row.appendChild(el('div', {'class':'err', text:'Last print failed: ' + err}));
+    return row;
+  }
+
+  function move(i, d){
+    var s = state.sections, j = i + d;
+    if (j < 0 || j >= s.length) return;
+    var t = s[i]; s[i] = s[j]; s[j] = t;
+    renderDesks(); setDirty(true);
+  }
+  function confirmRemove(what){ return window.confirm('Remove ' + what + '?'); }
+
+  $('addDesk').addEventListener('click', function(){
+    state.sections.push({id:'', title:'', kind:'news', cap:10, feeds:[{name:'', url:'', max_age_hours:48}]});
+    renderDesks(); setDirty(true);
+    var desks = $('desks').children; desks[desks.length - 1].querySelector('input').focus();
+  });
+  $('restoreBtn').addEventListener('click', function(){
+    if (!window.confirm('Replace your feed list with the built-in one? This happens when you save.')) return;
+    save(false, true);
+  });
+  $('ttl').addEventListener('input', function(){ setDirty(true); });
+  $('cooldown').addEventListener('input', function(){ setDirty(true); });
+
+  /* ── save ── */
+  function setDirty(v){
+    dirty = v;
+    var s = $('saveStatus');
+    s.textContent = v ? 'Unsaved changes.' : 'All changes saved.';
+    s.classList.toggle('dirty', v);
+  }
+  window.addEventListener('beforeunload', function(e){ if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  function showErrors(list){
+    var box = $('errors');
+    box.innerHTML = '';
+    box.appendChild(el('strong', {text:'Not saved. Please fix:'}));
+    box.appendChild(el('ul', {}, list.map(function(t){ return el('li', {text:t}); })));
+    box.hidden = false;
+    box.scrollIntoView({block:'nearest', behavior:'smooth'});
+  }
+
+  function save(reprint, restore){
+    var body = {
+      fetch_ttl_seconds: Math.round(Number($('ttl').value) * 60),
+      refresh_cooldown_seconds: Math.round(Number($('cooldown').value) * 60),
+      sections: restore ? null : state.sections,
+      refresh_now: !!reprint
+    };
+    $('saveBtn').disabled = $('saveRefreshBtn').disabled = true;
+    $('saveStatus').textContent = 'Saving…';
+    api('/api/settings', body).then(function(d){
+      $('saveBtn').disabled = $('saveRefreshBtn').disabled = false;
+      if (d._status === 401) { dirty = false; showLogin(false); return; }
+      if (!d.ok) { setDirty(true); showErrors(d.errors || [d.error || 'Something went wrong.']); return; }
+      apply(d);
+      if (reprint) {
+        $('saveStatus').textContent = d.refresh_started ? 'Saved. Printing a new edition…' : 'Saved. A print is already running.';
+        poll();
+      }
+    }).catch(function(){
+      $('saveBtn').disabled = $('saveRefreshBtn').disabled = false;
+      setDirty(true); showErrors(['The server did not answer.']);
+    });
+  }
+  function poll(){
+    setTimeout(function(){
+      fetch('/refresh-status').then(function(r){ return r.json(); }).then(function(st){
+        if (st.running) { poll(); return; }
+        if (dirty) return;
+        api('/api/settings').then(function(d){
+          if (d._status === 401 || dirty) return;
+          apply(d);
+          $('saveStatus').textContent = st.last_rc === 0 ? 'Saved and printed.' : 'Saved, but the print failed (exit ' + st.last_rc + ').';
+        });
+      }).catch(function(){});
+    }, 4000);
+  }
+  $('saveBtn').addEventListener('click', function(){ save(false); });
+  $('saveRefreshBtn').addEventListener('click', function(){ save(true); });
+
+  /* ── password ── */
+  $('pwForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var m = $('pwMsg'); m.className = 'msg'; m.textContent = '';
+    if ($('pwNew').value !== $('pwNew2').value) { m.textContent = 'The new passwords do not match.'; return; }
+    api('/api/settings/password', {current: $('pwCur').value, 'new': $('pwNew').value}).then(function(d){
+      if (!d.ok) { m.textContent = d.error || 'Could not change the password.'; return; }
+      $('pwCur').value = $('pwNew').value = $('pwNew2').value = '';
+      m.className = 'msg ok'; m.textContent = 'Password changed. Other browsers have been signed out.';
+    });
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

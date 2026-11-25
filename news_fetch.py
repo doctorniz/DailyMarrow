@@ -20,7 +20,11 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-OUT = Path(os.environ.get("NEWS_DIR", Path.home() / ".hermes" / "news")) / "edition.json"
+NEWS_DIR = Path(os.environ.get("NEWS_DIR", Path.home() / ".hermes" / "news"))
+OUT = NEWS_DIR / "edition.json"
+# Written by the settings page (/settings). When it holds a "sections" list,
+# that list replaces DEFAULT_SECTIONS below.
+SETTINGS = NEWS_DIR / "settings.json"
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/124.0.0.0 Safari/537.36")
 
@@ -30,8 +34,9 @@ YT = "https://www.youtube.com/feeds/videos.xml?channel_id="
 # 2026 ("no replacement" outside moderated communities), so the r/* sections
 # and multireddit sources are gone; selfh.st covers the homelab beat instead.
 
+# Built-in feed list, used until feeds are saved from the settings page.
 # (section id, title, kind, [(source label, url, max_age_hours), ...], cap)
-SECTIONS = [
+DEFAULT_SECTIONS = [
     ("world", "World", "news", [
         ("BBC World",       "https://feeds.bbci.co.uk/news/world/rss.xml",                 36),
         ("Guardian World",  "https://www.theguardian.com/world/rss",                       36),
@@ -84,6 +89,43 @@ SECTIONS = [
         ("Guardian Football",  "https://www.theguardian.com/football/rss", 36),
     ], 12),
 ]
+
+
+
+def sections_to_json(sections):
+    """DEFAULT_SECTIONS tuples -> the JSON shape stored in settings.json."""
+    return [{"id": sid, "title": title, "kind": kind, "cap": cap,
+             "feeds": [{"name": n, "url": u, "max_age_hours": a} for n, u, a in feeds]}
+            for sid, title, kind, feeds, cap in sections]
+
+
+def sections_from_json(data):
+    """settings.json sections -> the tuple shape main() works with."""
+    out = []
+    for sec in data:
+        feeds = [(f["name"], f["url"], float(f["max_age_hours"])) for f in sec.get("feeds", [])]
+        out.append((sec["id"], sec["title"], sec.get("kind", "news"), feeds, int(sec["cap"])))
+    return out
+
+
+def load_sections():
+    """Feeds saved from the settings page, else the built-in defaults."""
+    try:
+        data = json.loads(SETTINGS.read_text("utf-8"))
+    except FileNotFoundError:
+        return DEFAULT_SECTIONS
+    except Exception as exc:
+        print("settings.json unreadable (%s), using built-in feeds" % exc)
+        return DEFAULT_SECTIONS
+    secs = data.get("sections") if isinstance(data, dict) else None
+    if not secs:
+        return DEFAULT_SECTIONS
+    try:
+        return sections_from_json(secs)
+    except Exception as exc:
+        print("settings.json sections invalid (%s), using built-in feeds" % exc)
+        return DEFAULT_SECTIONS
+
 
 TAG_RE = re.compile(r"<[^>]+>")
 IMG_RE = re.compile(r"""<img[^>]+src=["']([^"']+)["']""", re.I)
@@ -306,6 +348,7 @@ def pull(source, url, max_age_h, tries=2):
 
 
 def main():
+    SECTIONS = load_sections()
     tasks = []
     for sec_id, title, kind, feeds, cap in SECTIONS:
         for source, url, age in feeds:

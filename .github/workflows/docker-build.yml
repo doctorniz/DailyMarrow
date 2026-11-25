@@ -24,9 +24,11 @@ jobs:
         
       - name: Run container test
         run: |
-          docker run -d --name daily-marrow-test -p 8091:8091 daily-marrow:test
+          docker run -d --name daily-marrow-test -p 5551:5551 daily-marrow:test
           sleep 5
-          curl -s http://localhost:8091/ | grep -q "Daily Marrow" && echo "✅ Server responds" || echo "❌ Server not responding"
-          curl -s http://localhost:8091/edition.json | python3 -c "import json,sys; d=json.load(sys.stdin); print('✅ edition.json has', len(d.get('sections',[])), 'sections')" 2>&1 || echo "❌ edition.json invalid"
+          curl -s http://localhost:5551/ | grep -q "Daily Marrow" && echo "✅ Server responds" || echo "❌ Server not responding"
+          curl -s http://localhost:5551/edition.json | python3 -c "import json,sys; d=json.load(sys.stdin); print('✅ edition.json has', len(d.get('sections',[])), 'sections')" 2>&1 || echo "❌ edition.json invalid"
+          curl -s http://localhost:5551/settings | grep -q "How the edition is made" && echo "✅ Settings page served" || (echo "❌ Settings page missing"; exit 1)
+          curl -s -o /dev/null -w "%{http_code}" http://localhost:5551/api/settings | grep -q 401 && echo "✅ Settings API locked" || (echo "❌ Settings API not locked"; exit 1)
           docker stop daily-marrow-test
           docker rm daily-marrow-test

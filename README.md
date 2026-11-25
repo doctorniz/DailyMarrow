@@ -190,8 +190,9 @@ Nothing else is served, so the server source and `.git` folder are never exposed
 ├── news_server.py        # HTTP server, reader extractor, refresh endpoints
 ├── fonts/                # self-hosted web fonts
 ├── Dockerfile
+├── docker-entrypoint.sh  # drops root and runs the server as an unprivileged user
 ├── docker-compose.yml
-├── test-docker.sh        # local smoke test of the Docker image
+├── test-docker.sh        # smoke test of the Docker image (CI runs it too)
 ├── docs/                 # README screenshots
 ├── .github/workflows/    # CI: Docker build and smoke test
 └── LICENSE
@@ -199,10 +200,11 @@ Nothing else is served, so the server source and `.git` folder are never exposed
 
 ## Testing
 
-Every push and pull request to `main` builds the Docker image and smoke-tests the running container in GitHub Actions. To run the same checks locally:
+Every push and pull request to `main` builds the Docker image and smoke-tests the running container in GitHub Actions. The checks cover the pages and APIs, the security headers, the first edition, that the server runs as a non-root user, the container health check and a clean shutdown. Any failed check fails the build. To run the same checks locally:
 
 ```bash
-./test-docker.sh
+./test-docker.sh               # build the image, then test it
+SKIP_BUILD=1 ./test-docker.sh  # test an image you already built
 ```
 
 ## License

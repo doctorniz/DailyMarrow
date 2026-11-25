@@ -12,6 +12,7 @@ Pure Python standard library on the back end, one HTML file on the front. No acc
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Dependencies: none](https://img.shields.io/badge/dependencies-none-2ea44f)
 ![Docker](https://img.shields.io/badge/docker-ready-2496ED?logo=docker&logoColor=white)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 
 <img src="docs/desktop-light.png" alt="Daily Marrow front page in light mode" width="100%">
 
@@ -166,7 +167,8 @@ Nothing else is served, so the server source and `.git` folder are never exposed
 ├── docker-compose.yml
 ├── test-docker.sh        # local smoke test of the Docker image
 ├── docs/                 # README screenshots
-└── .github/workflows/    # CI: Docker build and smoke test
+├── .github/workflows/    # CI: Docker build and smoke test
+└── LICENSE
 ```
 
 ## Testing
@@ -179,4 +181,4 @@ Every push and pull request to `main` builds the Docker image and smoke-tests th
 
 ## License
 
-MIT. Use it however you want.
+[MIT](LICENSE). Use it however you want.

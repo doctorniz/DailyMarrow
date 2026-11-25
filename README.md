@@ -48,6 +48,10 @@ Access at `http://localhost:8091`
 | `NEWS_PORT` | `8091` | HTTP port the server listens on |
 | `NEWS_HOST` | `0.0.0.0` | Bind address |
 | `FETCH_TTL_SECONDS` | `3600` | Auto-fetch interval (1 hour) |
+| `NEWS_DIR` | `/app/news` (Docker), `~/.hermes/news` (otherwise) | Where `edition.json` is written and served from |
+| `NEWS_STATIC_DIR` | folder of `news_server.py` if it has `index.html`, else `NEWS_DIR` | Where `index.html`, `fonts/` and favicons are served from |
+| `NEWS_FETCHER` | `news_fetch.py` next to `news_server.py` | Fetcher script run by refresh |
+| `NEWS_REFRESH_COOLDOWN` | `900` | Minimum seconds between refreshes |
 
 ## Local setup (no Docker)
 
@@ -55,6 +59,8 @@ Access at `http://localhost:8091`
 2. Install Python 3.11+
 3. Run the server: `python3 news_server.py`
 4. The server will auto-fetch on startup and serve on port 8091
+
+`edition.json` is generated, not committed. Until the first fetch finishes the page has no stories.
 
 ## Configuration
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""The Amberley Times -- daily news fetcher.
+"""Daily Marrow -- daily news fetcher.
 
 Pulls RSS/Atom feeds (news, Reddit multireddits, YouTube channels, Substack),
-normalizes them, and writes ~/.hermes/news/edition.json for the news site.
+normalizes them, and writes $NEWS_DIR/edition.json (default ~/.hermes/news) for the news site.
 Pure stdlib. No AI anywhere.
 """
 

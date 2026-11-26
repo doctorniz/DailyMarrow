@@ -11,24 +11,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      
+
       - name: Build Docker image
         run: |
           docker buildx build \
             --load \
             --tag daily-marrow:test \
             .
-        
-      - name: Run container test
-        run: |
-          docker run -d --name daily-marrow-test -p 5551:5551 daily-marrow:test
-          sleep 5
-          curl -s http://localhost:5551/ | grep -q "Daily Marrow" && echo "✅ Server responds" || echo "❌ Server not responding"
-          curl -s http://localhost:5551/edition.json | python3 -c "import json,sys; d=json.load(sys.stdin); print('✅ edition.json has', len(d.get('sections',[])), 'sections')" 2>&1 || echo "❌ edition.json invalid"
-          curl -s http://localhost:5551/settings | grep -q "How the edition is made" && echo "✅ Settings page served" || (echo "❌ Settings page missing"; exit 1)
-          curl -s -o /dev/null -w "%{http_code}" http://localhost:5551/api/settings | grep -q 401 && echo "✅ Settings API locked" || (echo "❌ Settings API not locked"; exit 1)
-          docker stop daily-marrow-test
-          docker rm daily-marrow-test
+
+      # Same checks as running ./test-docker.sh locally; any failure fails the job
+      - name: Smoke-test the container
+        env:
+          SKIP_BUILD: "1"
+        run: ./test-docker.sh

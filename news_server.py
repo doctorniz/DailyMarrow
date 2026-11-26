@@ -10,6 +10,7 @@ Admin (password): /settings edits the feed list and refresh timings. They are
 saved to NEWS_DIR/settings.json and take effect without a restart.
 """
 
+import base64
 import gzip
 import hashlib
 import hmac
@@ -23,6 +24,7 @@ import mimetypes
 import os
 import re
 import secrets
+import signal
 import socket
 import socketserver
 import subprocess
@@ -843,6 +845,39 @@ def _auto_fetch_loop():
             sys.stderr.write("auto-fetch check failed: %s\n" % exc)
 
 
+# Response hardening. Every response gets the basic headers below; HTML pages
+# also get a Content-Security-Policy. The pages' inline <script> blocks are
+# allowed by their SHA-256 hash, so anything injected later (say, through the
+# reader's extracted article HTML) cannot run script. Images may come from any
+# feed or article host; everything else must come from this server.
+BASE_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+}
+CSP_TEMPLATE = (
+    "default-src 'self'; script-src 'self'%s; style-src 'self' 'unsafe-inline'; "
+    "img-src * data: blob:; font-src 'self'; connect-src 'self'; "
+    "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+)
+_INLINE_SCRIPT = re.compile(rb"<script>(.*?)</script>", re.S)
+_csp_cache = {}  # path -> (mtime, header)
+
+
+def _csp_for(target, data):
+    """CSP header for an HTML file, with hashes of its inline scripts."""
+    mtime = target.stat().st_mtime
+    hit = _csp_cache.get(target)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    hashes = "".join(
+        " 'sha256-%s'" % base64.b64encode(hashlib.sha256(m.group(1)).digest()).decode()
+        for m in _INLINE_SCRIPT.finditer(data))
+    header = CSP_TEMPLATE % hashes
+    _csp_cache[target] = (mtime, header)
+    return header
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "DailyMarrow/1.0"
     protocol_version = "HTTP/1.1"
@@ -854,7 +889,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "public, max-age=604800" if cache else "no-cache")
-        for k, v in (headers or {}).items():
+        for k, v in {**BASE_HEADERS, **(headers or {})}.items():
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(data)
@@ -872,7 +907,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send("Not found.\n", "text/plain", 404)
             return
         ct, _ = mimetypes.guess_type(str(target))
-        self._send(target.read_bytes(), ct or "application/octet-stream", cache=cache)
+        data = target.read_bytes()
+        headers = None
+        if target.suffix == ".html":
+            headers = {"Content-Security-Policy": _csp_for(target, data)}
+        self._send(data, ct or "application/octet-stream", cache=cache, headers=headers)
 
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path.rstrip("/") or "/"
@@ -1133,6 +1172,12 @@ def main():
     # Auto-fetch on startup if edition is missing or stale, then keep checking
     _auto_fetch_if_stale()
     threading.Thread(target=_auto_fetch_loop, daemon=True).start()
+
+    # `docker stop` sends SIGTERM. As PID 1, Python would ignore it and get
+    # killed after the 10 s grace period; exit cleanly and at once instead.
+    def _stop(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, _stop)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

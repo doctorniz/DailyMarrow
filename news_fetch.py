@@ -330,6 +330,9 @@ def pull(source, url, max_age_h, tries=2):
     for it in items:
         if not it["title"] or not it["link"]:
             continue
+        # the page puts links in href: only web links, never javascript: etc.
+        if not it["link"].lower().startswith(("http://", "https://")):
+            continue
         d = it["date"]
         if d is not None:
             if d.tzinfo is None:
@@ -360,9 +363,9 @@ def main():
     def record(sec, kind, source, items, err):
         # only ever called from the main thread (as_completed loop)
         if err:
-            errors[sec + "/" + source] = err
+            errors[(sec, source)] = err
         else:
-            errors.pop(sec + "/" + source, None)
+            errors.pop((sec, source), None)
         results.setdefault(sec, []).extend(items)
 
     with ThreadPoolExecutor(max_workers=10) as ex:
@@ -415,7 +418,10 @@ def main():
             "items": uniq[:cap],
         })
 
-    errors_out = ["%s: %s" % (k, v) for k, v in sorted(errors.items())]
+    errors_out = ["%s/%s: %s" % (s, src, e) for (s, src), e in sorted(errors.items())]
+    # structured copy for the settings page: source names may contain ": "
+    feed_errors = [{"section": s, "source": src, "error": e}
+                   for (s, src), e in sorted(errors.items())]
     now_local = datetime.now().astimezone()
     edition = {
         "generated": now_local.isoformat(),
@@ -424,6 +430,7 @@ def main():
         "sections": sections,
         "curated": curated,
         "errors": errors_out,
+        "feed_errors": feed_errors,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     tmp = OUT.with_suffix(".json.tmp")

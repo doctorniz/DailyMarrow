@@ -11,7 +11,6 @@ saved to NEWS_DIR/settings.json and take effect without a restart.
 """
 
 import base64
-import gzip
 import hashlib
 import hmac
 import html.parser
@@ -34,6 +33,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zlib
 from pathlib import Path
 
 HOME = Path.home()
@@ -51,6 +51,32 @@ FETCHER = Path(os.environ.get("NEWS_FETCHER", APP_DIR / "news_fetch.py")).resolv
 PORT = int(os.environ.get("NEWS_PORT", "5551"))
 HOST = os.environ.get("NEWS_HOST", "0.0.0.0")
 SETTINGS_PATH = NEWS_DIR / "settings.json"
+
+
+def _parse_proxies(spec):
+    nets = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            sys.stderr.write("NEWS_TRUSTED_PROXIES: ignoring %r\n" % part)
+    return nets
+
+
+# Reverse proxies whose X-Forwarded-For is believed (IPs or CIDR ranges).
+# Behind nginx on the Docker host, add the bridge range, e.g. 172.16.0.0/12.
+TRUSTED_PROXIES = _parse_proxies(os.environ.get("NEWS_TRUSTED_PROXIES", "127.0.0.1,::1"))
+
+
+def _is_trusted_proxy(ip):
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(addr in net for net in TRUSTED_PROXIES)
 
 _refresh_lock = threading.Lock()
 _refresh_state = {"running": False, "last_rc": None, "last_started": 0.0}
@@ -177,7 +203,7 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
         host = urllib.parse.urlparse(newurl).netloc.lower()
         if not newurl.startswith("https://") or not _edition_index()["hosts"] & {host}:
             raise urllib.error.HTTPError(newurl, 403, "redirect outside allowlist", None, None)
-        if not _host_is_public(host):
+        if not _host_is_public(urllib.parse.urlparse(newurl).hostname or ""):
             raise urllib.error.HTTPError(newurl, 403, "redirect to private host", None, None)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -492,6 +518,10 @@ def _fetch_article(url):
     if not _read_semaphore.acquire(blocking=False):
         return {"ok": False, "reason": "busy"}
     try:
+        # feed publishers write these links, so the first hop needs the same
+        # check as every redirect: no loopback, LAN or link-local targets
+        if not _host_is_public(urllib.parse.urlparse(url).hostname or ""):
+            return {"ok": False, "reason": "private-host"}
         req = urllib.request.Request(url, headers={
             "User-Agent": UA,
             "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
@@ -507,10 +537,13 @@ def _fetch_article(url):
         if len(raw) > MAX_BYTES:
             return {"ok": False, "reason": "too-large"}
         if raw[:2] == b"\x1f\x8b" or "gzip" in cenc:
+            # capped: a small gzip body can otherwise inflate to gigabytes
             try:
-                raw = gzip.decompress(raw)
-            except OSError:
+                raw = zlib.decompressobj(16 + zlib.MAX_WBITS).decompress(raw, MAX_BYTES + 1)
+            except zlib.error:
                 pass
+            if len(raw) > MAX_BYTES:
+                return {"ok": False, "reason": "too-large"}
         if "html" not in ctype and "<html" not in raw[:4000].decode("latin-1", "replace").lower():
             return {"ok": False, "reason": "not-html"}
         return _extract(raw.decode("utf-8", errors="replace"), url)
@@ -522,6 +555,14 @@ def _fetch_article(url):
         _read_semaphore.release()
 
 
+def _prune(buckets, window, now):
+    """Drop IPs with no hits left in the window (call with _bucket_lock held).
+    Only stale entries go, so a flood of new IPs cannot reset live limits."""
+    if len(buckets) > 5000:
+        for k in [k for k, v in buckets.items() if not v or now - v[-1] >= window]:
+            del buckets[k]
+
+
 def _rate_ok(ip):
     now = time.time()
     with _bucket_lock:
@@ -531,8 +572,7 @@ def _rate_ok(ip):
             return False
         hits.append(now)
         _buckets[ip] = hits
-        if len(_buckets) > 5000:
-            _buckets.clear()
+        _prune(_buckets, RATE_WINDOW, now)
         return True
 
 
@@ -653,7 +693,7 @@ def _validate_sections(raw):
         cap = _int_in(sec.get("cap"), 1, 60)
         if cap is None:
             errors.append("%s: show between 1 and 60 stories." % label)
-        feeds = []
+        feeds, names = [], set()
         raw_feeds = sec.get("feeds")
         if not isinstance(raw_feeds, list) or not raw_feeds:
             errors.append("%s needs at least one feed." % label)
@@ -668,6 +708,9 @@ def _validate_sections(raw):
             flabel = "%s, %s" % (label, name or "feed %d" % j)
             if not name:
                 errors.append("%s needs a name." % flabel)
+            elif name.lower() in names:
+                errors.append("%s: two feeds in this section share that name." % flabel)
+            names.add(name.lower())
             parsed = urllib.parse.urlparse(url)
             if parsed.scheme not in ("http", "https") or not parsed.netloc or len(url) > 2000:
                 errors.append("%s: the URL must start with http:// or https://." % flabel)
@@ -688,9 +731,15 @@ def _settings_view():
     errors = {}
     try:
         ed = json.loads((NEWS_DIR / "edition.json").read_text("utf-8"))
-        for line in ed.get("errors") or []:
-            key, _, msg = str(line).partition(": ")
-            errors[key] = msg
+        structured = ed.get("feed_errors")
+        if isinstance(structured, list):
+            for e in structured:
+                if isinstance(e, dict):
+                    errors["%s/%s" % (e.get("section", ""), e.get("source", ""))] = str(e.get("error", ""))
+        else:  # editions printed before feed_errors existed
+            for line in ed.get("errors") or []:
+                key, _, msg = str(line).partition(": ")
+                errors[key] = msg
         generated = ed.get("generated_human", "")
     except Exception:
         generated = ""
@@ -783,8 +832,7 @@ def _login_rate_ok(ip):
         if ok:
             hits.append(now)
         _login_buckets[ip] = hits
-        if len(_login_buckets) > 5000:
-            _login_buckets.clear()
+        _prune(_login_buckets, LOGIN_WINDOW, now)
         return ok
 
 
@@ -881,6 +929,9 @@ def _csp_for(target, data):
 class Handler(http.server.BaseHTTPRequestHandler):
     server_version = "DailyMarrow/1.0"
     protocol_version = "HTTP/1.1"
+    # idle or trickling keep-alive connections are dropped instead of each
+    # holding a thread forever
+    timeout = 30
 
     def _send(self, data, ctype="text/html; charset=utf-8", status=200, cache=False, headers=None):
         if isinstance(data, str):
@@ -891,6 +942,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "public, max-age=604800" if cache else "no-cache")
         for k, v in {**BASE_HEADERS, **(headers or {})}.items():
             self.send_header(k, v)
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(data)
 
@@ -952,14 +1005,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send("Not found.\n", "text/plain", 404)
 
     def _client_ip(self):
-        # behind a local nginx proxy the real visitor is in X-Forwarded-For;
-        # only trust that header when the direct client IS the proxy (loopback)
+        # Behind a reverse proxy the real visitor is in X-Forwarded-For. Only
+        # believe it when the direct client is a trusted proxy, and read it
+        # from the right: proxies append, so the left end is whatever the
+        # visitor chose to send. The first untrusted hop is the visitor.
         ip = self.client_address[0]
-        if ip in ("127.0.0.1", "::1"):
-            xff = self.headers.get("X-Forwarded-For", "")
-            if xff:
-                return xff.split(",")[0].strip() or ip
+        if not _is_trusted_proxy(ip):
+            return ip
+        hops = [h.strip() for h in self.headers.get("X-Forwarded-For", "").split(",")]
+        for hop in reversed([h for h in hops if h]):
+            if not _is_trusted_proxy(hop):
+                return hop
+            ip = hop
         return ip
+
+    def _unread_body(self):
+        """The request body is not being read: close after replying, or its
+        bytes would be parsed as the next request on this connection."""
+        try:
+            if int(self.headers.get("Content-Length") or 0) != 0:
+                self.close_connection = True
+        except ValueError:
+            self.close_connection = True
+        if self.headers.get("Transfer-Encoding"):
+            self.close_connection = True
 
     def _read(self, url):
         url = url.split("#")[0]
@@ -981,11 +1050,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 payload = None
         if payload is None:
             payload = _fetch_article(url)
-            with _read_lock:
-                if len(_read_cache) >= READ_CACHE_MAX:
-                    for k in sorted(_read_cache, key=lambda k: _read_cache[k][0])[: READ_CACHE_MAX // 2]:
-                        _read_cache.pop(k, None)
-                _read_cache[url] = (now + READ_TTL, payload)
+            # cache only settled answers: "busy" or a network blip must not
+            # break the story for every reader until the TTL runs out
+            if payload.get("ok") or payload.get("reason") == "short-or-gated":
+                with _read_lock:
+                    if len(_read_cache) >= READ_CACHE_MAX:
+                        for k in sorted(_read_cache, key=lambda k: _read_cache[k][0])[: READ_CACHE_MAX // 2]:
+                            _read_cache.pop(k, None)
+                    _read_cache[url] = (now + READ_TTL, payload)
         body = json.dumps(payload, default=str)
         self._send(body, "application/json",
                    status=200 if payload.get("ok") or payload.get("reason") == "short-or-gated" else 502)
@@ -1031,10 +1103,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _admin_post(self, path):
         if self.headers.get(ADMIN_HEADER) != "1":
+            self._unread_body()
             self._json({"ok": False, "error": "Missing request header."}, 403)
             return
         body = self._body_json()
         if body is None:
+            # may have bailed out before reading the body
+            self.close_connection = True
             self._json({"ok": False, "error": "Bad request."}, 400)
             return
 
@@ -1138,6 +1213,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path.startswith("/api/settings"):
             self._admin_post(path)
             return
+        self._unread_body()
         if path == "/refresh":
             started, retry_in = _start_refresh()
             payload = {"started": started, "running": _refresh_state["running"]}

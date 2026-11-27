@@ -341,7 +341,9 @@ html.reader-on{overflow:hidden}
     try { localStorage.setItem('at-theme', next); } catch (e) {}
   });
 
-  function esc(s){ var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+  /* innerHTML of a text node escapes & < > but not quotes, and esc() also
+     fills href="..." attributes, so quotes are escaped by hand */
+  function esc(s){ var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML.replace(/"/g, '&quot;'); }
   function rel(ts){
     if(!ts) return '';
     var s = Math.max(0,(Date.now()/1000) - ts);

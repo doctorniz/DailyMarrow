@@ -141,6 +141,7 @@ A few things are needed before the server starts, so they stay as environment va
 | `NEWS_STATIC_DIR` | The folder holding `news_server.py` if it contains `index.html`, else `NEWS_DIR` | Where `index.html`, `settings.html`, `fonts/` and the favicons are served from. |
 | `NEWS_FETCHER` | `news_fetch.py` next to `news_server.py` | Fetcher script that refreshes run. |
 | `NEWS_ADMIN_PASSWORD` | unset | Optional fixed admin password for the settings page. |
+| `NEWS_TRUSTED_PROXIES` | `127.0.0.1,::1` | Reverse proxies (IPs or CIDR ranges) whose `X-Forwarded-For` header is believed, so rate limits apply per visitor. Behind nginx on the Docker host, add the bridge range, e.g. `127.0.0.1,::1,172.16.0.0/12`. |
 | `FETCH_TTL_SECONDS` | `3600` | Starting value for the edition max age, until one is saved on the settings page. |
 | `NEWS_REFRESH_COOLDOWN` | `900` | Starting value for the refresh cooldown, until one is saved on the settings page. |
 

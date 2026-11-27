@@ -15,6 +15,9 @@ services:
       # Optional fixed admin password for /settings. Without it, the server
       # prints a one-time setup code to its log on first run.
       # - NEWS_ADMIN_PASSWORD=change-me
+      # Behind nginx on the Docker host, trust the bridge network so rate
+      # limits see each visitor's IP (from X-Forwarded-For) instead of one IP.
+      # - NEWS_TRUSTED_PROXIES=127.0.0.1,::1,172.16.0.0/12
     restart: unless-stopped
 
 volumes:

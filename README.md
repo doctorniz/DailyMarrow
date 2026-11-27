@@ -193,15 +193,22 @@ Nothing else is served, so the server source and `.git` folder are never exposed
 ├── Dockerfile
 ├── docker-entrypoint.sh  # drops root and runs the server as an unprivileged user
 ├── docker-compose.yml
+├── tests/                # unit and HTTP tests (stdlib unittest, no network)
 ├── test-docker.sh        # smoke test of the Docker image (CI runs it too)
 ├── docs/                 # README screenshots
-├── .github/workflows/    # CI: Docker build and smoke test
+├── .github/workflows/    # CI: unit tests, Docker build and smoke test
 └── LICENSE
 ```
 
 ## Testing
 
-Every push and pull request to `main` builds the Docker image and smoke-tests the running container in GitHub Actions. The checks cover the pages and APIs, the security headers, the first edition, that the server runs as a non-root user, the container health check and a clean shutdown. Any failed check fails the build. To run the same checks locally:
+The `tests/` folder holds unit and HTTP tests for the fetcher, the settings validation, the reader's article extractor and its fetch guards, rate limits, admin sign-in and the server's request handling. They use only the standard library, run a real server on a random local port, and never touch the network (feeds and article fetches use saved samples in `tests/fixtures/`). Run them with:
+
+```bash
+python -m unittest discover -s tests
+```
+
+Every push and pull request to `main` also runs these tests, then builds the Docker image and smoke-tests the running container in GitHub Actions. The checks cover the pages and APIs, the security headers, the first edition, that the server runs as a non-root user, the container health check and a clean shutdown. Any failed check fails the build. To run the same checks locally:
 
 ```bash
 ./test-docker.sh               # build the image, then test it

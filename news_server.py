@@ -452,11 +452,15 @@ def _extract(html_text, base):
         tb.close()
     except Exception:
         return {"ok": False, "reason": "parse-failed"}
-    node = _find_content(tb.root, base)
-    if node is None:
-        return {"ok": False, "reason": "no-content"}
-    blocks, words = _gather(node, base)
-    meta = _meta_from_root(tb.root)
+    try:
+        node = _find_content(tb.root, base)
+        if node is None:
+            return {"ok": False, "reason": "no-content"}
+        blocks, words = _gather(node, base)
+        meta = _meta_from_root(tb.root)
+    except RecursionError:
+        # the tree walks are recursive; unclosed tags can nest past the limit
+        return {"ok": False, "reason": "parse-failed"}
     if words < 500:
         return {"ok": False, "reason": "short-or-gated", "title": meta.get("title", "")}
     parts = []

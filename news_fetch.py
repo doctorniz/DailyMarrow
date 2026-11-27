@@ -223,7 +223,8 @@ def clean_summary(summary, title):
     s = re.sub(r"[\s\-\u2013\u2014:;,]+$", "", s)
     t = title.strip().rstrip(".!")
     if t and len(t) > 12 and s.lower().startswith(t.lower()):
-        s = s[len(t):].strip(" .\u2013\u2014-:")
+        # only the separator after the headline goes; keep the final full stop
+        s = s[len(t):].lstrip(" .\u2013\u2014-:")
     if len(s) < 30:
         return ""
     return s

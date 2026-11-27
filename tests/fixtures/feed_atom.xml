@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- {RECENT} is filled in by the tests (ISO 8601 date) -->
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/">
+<title>Example Channel</title>
+<link rel="self" href="https://www.youtube.com/feeds/videos.xml?channel_id=X"/>
+<entry>
+  <title>Atom article</title>
+  <link rel="self" href="https://blog.example.com/feed/1"/>
+  <link rel="alternate" href="https://blog.example.com/posts/1"/>
+  <published>{RECENT}</published>
+  <author><name>Sam Author</name></author>
+  <summary>A summary that is long enough to be kept as the standfirst for this entry.</summary>
+</entry>
+<entry>
+  <title>A video</title>
+  <yt:videoId>abcdefghijk</yt:videoId>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=abcdefghijk"/>
+  <published>{RECENT}</published>
+  <author><name>Channel</name></author>
+</entry>
+</feed>
